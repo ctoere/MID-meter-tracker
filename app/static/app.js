@@ -42,7 +42,8 @@ async function loadAll(){
   try{
     const d = await api("/api/register");
     Object.assign(S, {chargers:d.chargers, meters:d.meters, conflicts:d.conflicts,
-                      manifest:d.manifest, gaps:d.gaps, stats:d.stats, meta:d.meta});
+                      manifest:d.manifest, gaps:d.gaps, stats:d.stats, meta:d.meta,
+                      conflictStats:d.conflictStats});
     const p=$("#state"); p.classList.add("live");
     p.lastElementChild.textContent = d.meta.path.split(/[\\/]/).pop();
     p.title = d.meta.path;
@@ -381,41 +382,80 @@ function renderMeters(){
   $$("#mtb tr").forEach(tr => tr.onclick = () => openMeter(tr.dataset.id));
 }
 
-/* ───── conflicts ───── */
-function opposed(c){
-  const el = v => ["Integrated","Optional","External"].includes(v);
-  return (el(c["Tracker says"]) && c["Zite says"]==="None") ||
-         (el(c["Zite says"]) && c["Tracker says"]==="None");
-}
+/* ───── conflicts ─────
+   Nothing here decides anything on its own. A person picks a side and says why. */
 function renderConflicts(){
   const list = $("#cfList");
-  const open = S.conflicts.filter(c => !String(c.Decision||"").trim()).length;
-  $("#cfCount").textContent = S.conflicts.length
-    ? `${open} open · ${S.conflicts.length-open} resolved of ${S.conflicts.length}` : "";
+  const st = S.conflictStats || {total:0, open:0, resolved:0, opposed_open:0};
+  $("#cfCount").textContent = st.total
+    ? `${st.open} open · ${st.resolved} resolved of ${st.total}${
+        st.opposed_open?` · ${st.opposed_open} opposed still open`:""}` : "";
   if(!S.conflicts.length){
     list.innerHTML = `<div class="empty card">No conflict rows in this register.
       The Conflicts sheet exists and is empty — nothing has been auto-resolved.</div>`;
     return;
   }
   list.innerHTML = S.conflicts.map(c => `
-    <div class="cf ${opposed(c)?"opposed":""} ${c.Decision?"resolved":""}" data-id="${esc(c.ID)}">
+    <div class="cf ${c.opposed?"opposed":""} ${c.open?"":"resolved"}" data-id="${esc(c.ID)}">
       <div class="hd"><b>${esc(c.Brand)} — ${esc(c.Model)}</b>
-        <span>${opposed(c)?'<span class="badge b-None"><i></i>opposed</span> ':""}${
-          c.Decision?`<span class="badge b-Integrated"><i></i>resolved: ${esc(c.Decision)}</span>`:""}</span></div>
+        <span>${c.opposed?'<span class="badge b-None"><i></i>opposed</span> ':""}${
+          c.open?"":`<span class="badge b-Integrated"><i></i>resolved: ${esc(c.Decision)}</span>`}</span></div>
+      ${c.opposed && c.open ? `<div class="note crit" style="margin:0 0 10px">One source says eligible,
+        the other says not. Whichever system the helpdesk opened decided what this client was told.</div>` : ""}
       <div class="opts">
         <div class="opt ${c.Decision===c["Tracker says"]?"sel":""}" data-v="${esc(c["Tracker says"])}">
           <div class="src">Research tracker</div>${badge(c["Tracker says"])}
-          <p>${esc(String(c["Tracker note"]||"").slice(0,240))||"no note"}</p></div>
+          <p>${esc(String(c["Tracker note"]||"").slice(0,300))||"no note"}</p></div>
         <div class="opt ${c.Decision===c["Zite says"]?"sel":""}" data-v="${esc(c["Zite says"])}">
-          <div class="src">Zite dashboard <span class="mono">(${esc(c["Zite original value"]||"")})</span></div>${badge(c["Zite says"])}
-          <p>${esc(String(c["Zite note"]||"").slice(0,240))||"no note"}</p></div>
-      </div></div>`).join("");
+          <div class="src">Zite dashboard ${c["Zite original value"]?`<span class="mono">(${esc(c["Zite original value"])})</span>`:""}</div>${badge(c["Zite says"])}
+          <p>${esc(String(c["Zite note"]||"").slice(0,300))||"no note"}</p></div>
+      </div>
+      ${c.open ? `<div class="field" style="margin-top:10px">
+          <label>Why this one — required, and recorded in the Change Log</label>
+          <input class="cfReason" placeholder="Which source you followed and what settled it">
+        </div>
+        <div class="acts"><span class="reqnote">Pick a side above, then confirm.</span>
+          <button class="primary cfGo" disabled>Resolve</button></div>
+        <div class="cfErr"></div>`
+      : `<div class="mono" style="font-size:11.5px;color:var(--ink-3);margin-top:8px">
+          decided by ${esc(c["Decided By"]||"")} on ${esc(c["Decided At"]||"")}</div>`}
+    </div>`).join("");
+
+  list.querySelectorAll(".cf").forEach(card => {
+    const go = card.querySelector(".cfGo"); if(!go) return;
+    let picked = null;
+    card.querySelectorAll(".opt").forEach(opt => opt.onclick = () => {
+      picked = opt.dataset.v;
+      card.querySelectorAll(".opt").forEach(o => o.classList.toggle("sel", o === opt));
+      go.disabled = false;
+    });
+    go.onclick = async () => {
+      const reason = (card.querySelector(".cfReason")||{}).value || "";
+      const err = card.querySelector(".cfErr"); err.innerHTML = "";
+      go.disabled = true;
+      try{
+        const d = await api(`/api/conflicts/${encodeURIComponent(card.dataset.id)}/resolve`,
+          {method:"POST", headers:{"Content-Type":"application/json"},
+           body: JSON.stringify({decision: picked, reason})});
+        const ci = S.conflicts.findIndex(x => x.ID === card.dataset.id);
+        if(ci >= 0) S.conflicts[ci] = {...d.conflict, opposed: S.conflicts[ci].opposed, open:false};
+        const ri = S.chargers.findIndex(x => x.ID === d.charger.ID);
+        if(ri >= 0) S.chargers[ri] = d.charger;
+        S.conflictStats = d.conflictStats; S.stats = d.stats;
+        renderAll(); toast(`Resolved — ${d.charger.Brand} ${d.charger.Model} is ${d.charger["MID Status"]}`);
+      }catch(e){ err.innerHTML = `<div class="err">${esc(e.message)}</div>`; go.disabled = false; }
+    };
+  });
 }
 
 /* ───── manifest ───── */
 function renderManifest(){
   $("#mTot").textContent = S.manifest.length;
   $("#mGap").textContent = S.gaps.length;
+  const noUrl = S.manifest.filter(m => !String(m.Url||"").trim()).length;
+  $("#mHave").textContent = S.dl && S.dl.counts
+    ? (S.dl.counts.downloaded||0) + (S.dl.counts.skipped||0) : "—";
+
   $("#gapList").innerHTML = S.gaps.length
     ? S.gaps.slice(0,60).map(g => `
       <div class="qrow">
@@ -427,20 +467,102 @@ function renderManifest(){
         <button class="primary" data-q="${esc(g.id)}" style="height:34px">Queue</button></div>`).join("")
       + (S.gaps.length>60 ? `<div class="mono" style="color:var(--ink-3);font-size:12px">…and ${S.gaps.length-60} more. Use “Queue all gaps”.</div>` : "")
     : `<div class="empty card">No gaps — every datasheet link is queued.</div>`;
+  $("#gapList").querySelectorAll("[data-q]").forEach(b =>
+    b.onclick = () => queueGaps([b.dataset.q]));
 
   const q = S.mf.toLowerCase();
-  const all = S.manifest.filter(m => !q || Object.values(m).some(v => String(v).toLowerCase().includes(q)));
-  $("#mtb2").innerHTML = all.length
-    ? all.slice(0,400).map(m => `<tr>
+  const rows = S.manifest.map((m, i) => ({m, i}))
+    .filter(({m}) => !q || Object.values(m).some(v => String(v).toLowerCase().includes(q)));
+  $("#mtb2").innerHTML = rows.length
+    ? rows.slice(0,400).map(({m, i}) => {
+        const r = (S.dlByFile||{})[m.Filename];
+        const mark = r
+          ? `<span class="badge b-${r.status==="failed"?"None":r.status==="no-url"?"Unknown":"Integrated"}"
+               title="${esc(r.detail||"")}"><i></i>${esc(r.status)}</span>` : "";
+        return `<tr>
         <td>${esc(m.Brand)}</td><td>${esc(m.Model)}</td>
         <td class="mono" style="font-size:11.5px">${esc(m.SubFolder)}</td>
         <td class="mono" style="font-size:11.5px">${esc(m.Filename)}</td>
-        <td class="mono" style="font-size:11.5px;max-width:280px"><div class="clamp">${
+        <td class="mono" style="font-size:11.5px;max-width:260px"><div class="clamp">${
           m.Url ? esc(m.Url) : '<span style="color:var(--ink-3)">filed by hand — no public link</span>'}</div></td>
-        <td></td></tr>`).join("")
+        <td style="white-space:nowrap">${mark}
+          <button class="del" data-rm="${i}" title="Remove from the queue">✕</button></td></tr>`;
+      }).join("")
     : `<tr><td colspan="6"><div class="empty">Nothing queued.</div></td></tr>`;
+  $("#mtb2").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => removeManifest(+b.dataset.rm));
+  $("#mNoUrl").textContent = noUrl
+    ? `${noUrl} row${noUrl===1?"":"s"} have no public link — filed by hand, not a failure.` : "";
 }
 $("#mq").oninput = e => { S.mf = e.target.value; renderManifest(); };
+
+async function queueGaps(ids){
+  try{
+    const d = await api("/api/manifest/queue-gaps", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids: ids||[]})});
+    S.manifest = d.manifest; S.gaps = d.gaps;
+    renderManifest(); renderTiles();
+    toast(d.added.length ? `Queued ${d.added.length} row${d.added.length===1?"":"s"}` : "Nothing to queue");
+  }catch(e){ toast(e.message); }
+}
+$("#fixGaps").onclick = () => { if(!S.gaps.length) return toast("No gaps to queue."); queueGaps(); };
+
+async function removeManifest(index){
+  if(!confirm("Remove this row from the download queue?")) return;
+  try{
+    const d = await api(`/api/manifest/${index}`, {method:"DELETE"});
+    S.manifest = d.manifest;
+    const reg = await api("/api/register");
+    S.gaps = reg.gaps;
+    renderManifest(); renderTiles(); toast("Removed from the queue");
+  }catch(e){ toast(e.message); }
+}
+
+$("#addManBtn").onclick = async () => {
+  const brand = prompt("Brand?"); if(!brand) return;
+  const model = prompt("Model?") || "";
+  const url = prompt("Datasheet URL (leave blank if filed by hand)") || "";
+  const type = (prompt("Charge type — AC, DC or Meter", "AC") || "AC").trim().toUpperCase();
+  const sub = type.startsWith("M") ? `Meters\\${brand}`
+            : `Chargers\\${type.startsWith("D")?"DC":"AC"} Chargers\\${brand}`;
+  const slug = t => String(t).replace(/[^0-9A-Za-z]+/g, "");
+  const ext = /\.html?$/i.test(url) ? ".html" : ".pdf";
+  try{
+    const d = await api("/api/manifest", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({Brand:brand, Model:model, SubFolder:sub, Url:url,
+                            Filename:`${slug(brand)}_${slug(model)}_datasheet${ext}`})});
+    S.manifest = d.manifest; renderManifest(); renderTiles(); toast(`Added ${d.row.Filename}`);
+  }catch(e){ toast(e.message); }
+};
+
+/* ───── downloader ───── */
+let dlTimer;
+$("#dlBtn").onclick = async () => {
+  try{
+    const d = await api("/api/download", {method:"POST", headers:{"Content-Type":"application/json"},
+                                          body: JSON.stringify({})});
+    toast(`Downloading ${d.started} files into ${d.driveRoot}`);
+    $("#dlBtn").disabled = true;
+    clearInterval(dlTimer); dlTimer = setInterval(pollDownload, 700); pollDownload();
+  }catch(e){ toast(e.message); }
+};
+async function pollDownload(){
+  try{
+    const d = await api("/api/download/status");
+    if(d.idle) return;
+    S.dl = d;
+    S.dlByFile = {}; (d.results||[]).forEach(r => S.dlByFile[r.filename] = r);
+    const c = d.counts || {};
+    $("#dlNote").textContent =
+      `${d.done}/${d.total} — ${c.downloaded||0} downloaded, ${c.skipped||0} already on disk, ` +
+      `${c["no-url"]||0} filed by hand, ${c.failed||0} failed`;
+    renderManifest();
+    if(!d.running){
+      clearInterval(dlTimer); $("#dlBtn").disabled = false;
+      const failed = (d.results||[]).filter(r => r.status === "failed");
+      toast(failed.length ? `Done — ${failed.length} failed, see the queue` : "Done — all files present");
+    }
+  }catch(e){ clearInterval(dlTimer); $("#dlBtn").disabled = false; toast(e.message); }
+}
 
 /* ───── intake (staging only until phase 5) ───── */
 $("#pick").onclick = () => $("#fInt").click();

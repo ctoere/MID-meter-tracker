@@ -97,7 +97,7 @@
   <div class="tiles">
     <div class="tile"><div class="l">Queued</div><div class="v" id="mTot">0</div><div class="s">rows in the manifest</div></div>
     <div class="tile warn"><div class="l">Gaps</div><div class="v" id="mGap">0</div><div class="s">register rows with a link, not queued</div></div>
-    <div class="tile"><div class="l">On disk</div><div class="v" id="mHave">—</div><div class="s">already downloaded</div></div>
+    <div class="tile"><div class="l">On disk</div><div class="v" id="mHave">—</div><div class="s">present after the last run</div></div>
   </div>
 
   <div class="note">
@@ -112,7 +112,9 @@
   <div id="gapList"></div>
 
   <div class="sechead"><h2>Queue</h2><div class="ln"></div>
-    <input type="search" id="mq" placeholder="Filter…" style="max-width:240px"></div>
+    <input type="search" id="mq" placeholder="Filter…" style="max-width:240px">
+    <button class="ghost" id="addManBtn">Add row</button></div>
+  <div class="mono" id="mNoUrl" style="font-size:12px;color:var(--ink-3);margin-bottom:7px"></div>
   <div class="tw" style="max-height:46vh"><table>
     <thead><tr><th>Brand</th><th>Model</th><th>Folder</th><th>Filename</th><th>URL</th><th></th></tr></thead>
     <tbody id="mtb2"></tbody></table></div>

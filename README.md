@@ -93,6 +93,42 @@ reached:
 - **Notes are appended, never overwritten.** They carry quoted source language, so the
   drawer shows existing notes read-only and offers a separate "append a note" box.
 
+## Conflicts
+
+Rows where the research tracker and the Zite dashboard disagreed. Both sources are shown
+side by side with their reasoning; a person picks one and states why. There is no
+auto-resolve anywhere — no "prefer the newer source", no tie-break, no bulk apply.
+
+A conflict is flagged **opposed** when one side says eligible (Integrated/Optional/
+External) and the other says None. Those are the serious ones: the answer a client got
+depended on which system the helpdesk happened to open.
+
+Resolving writes the chosen status onto the charger row, clears the row's `Conflict`
+marker, appends both sides' positions to the notes, and logs it all. It deliberately does
+**not** clear `Review Needed` — adjudicating a source disagreement is not the same as
+verifying the row against a primary source.
+
+> The Conflicts sheet in this workbook is **empty**. The feature is built and tested
+> against synthetic rows, ready for the 25 real disagreements when they arrive.
+
+## Manifest and the downloader
+
+The Manifest tab lists the download queue, with filtering, add and remove, and gap
+detection prominently at the top. "Queue all gaps" closes them in one action.
+
+`python -m app` serves a downloader that replaces `sync_datasheets.ps1`:
+
+- **idempotent** — a file already on disk and non-empty is skipped; a 0-byte file from a
+  previous failed run is re-fetched rather than trusted
+- **concurrent**, capped by `[downloader].max_concurrent`
+- **retries with exponential backoff** on transport errors, 5xx and 429
+- **sends a real browser User-Agent** — several vendor CDNs 403 anything else
+- **writes via a `.part` file** so an interrupted fetch never leaves a half-file that the
+  next run would mistake for a completed download
+- **empty-URL rows are skipped silently**, reported as `no-url`, never as failures
+
+Per-file results come back into the queue table as you watch.
+
 ## Safety properties
 
 - **Never writes in place.** Every save backs up first, writes to a temp file, then
@@ -108,11 +144,18 @@ reached:
 python -m pytest tests/ -q
 ```
 
-85 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+111 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is
 append-only, that notes survive an edit, and that a deleted row's ID is never reissued.
+Conflicts are covered with synthetic rows (opposed detection, refusal to resolve without a
+reason, no silent re-decision). The downloader runs against a real local HTTP server rather
+than mocks, covering idempotency, the 0-byte case, retry-on-503, and empty-URL handling.
+
+Note: the downloader has **not** been exercised against real manufacturer CDNs — the
+sandbox this was built in blocks outbound connections to them. Its behaviour on real URLs
+is covered by the local-server tests; the first real run should be spot-checked.
 
 ## Migration note
 

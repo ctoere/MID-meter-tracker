@@ -9,11 +9,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import asyncio
+
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import changelog, domain, manifest as manifest_mod, schema, storage
+from . import (changelog, conflicts as conflicts_mod, domain, downloader,
+               manifest as manifest_mod, schema, storage)
 from .config import get_config
 
 HERE = Path(__file__).resolve().parent
@@ -51,7 +54,11 @@ def get_register() -> dict:
     return {
         "chargers": reg.chargers,
         "meters": reg.meters,
-        "conflicts": reg.conflicts,
+        "conflicts": [
+            {**c, "opposed": conflicts_mod.is_opposed(c), "open": conflicts_mod.is_open(c)}
+            for c in reg.conflicts
+        ],
+        "conflictStats": conflicts_mod.summarise(reg.conflicts),
         "manifest": reg.manifest,
         "changeLog": reg.change_log[-200:],
         "gaps": [
@@ -251,3 +258,109 @@ def post_meter(payload: dict = Body(...)) -> dict:
 @app.get("/api/history/{row_id}")
 def get_history(row_id: str) -> dict:
     return {"entries": changelog.history(register().change_log, row_id)}
+
+
+@app.post("/api/conflicts/{conflict_id}/resolve")
+def post_resolve_conflict(conflict_id: str, payload: dict = Body(...)) -> dict:
+    """Apply a human's decision. There is no auto-resolve anywhere in this app."""
+    reg = register()
+    try:
+        result = conflicts_mod.resolve(reg, conflict_id,
+                                       str(payload.get("decision") or ""),
+                                       str(payload.get("reason") or ""))
+    except conflicts_mod.ConflictError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except schema.StatusVocabularyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except changelog.ChangeRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    _persist(reg)
+    return {"ok": True, "conflict": result["conflict"], "charger": result["charger"],
+            "conflictStats": conflicts_mod.summarise(reg.conflicts),
+            "stats": domain.summarise(reg.chargers)}
+
+
+# ---------------------------------------------------------------------------
+# manifest
+# ---------------------------------------------------------------------------
+
+@app.post("/api/manifest")
+def post_manifest_row(payload: dict = Body(...)) -> dict:
+    """Add one queue row by hand."""
+    reg = register()
+    row = {column: str(payload.get(column, "") or "").strip()
+           for column in schema.MANIFEST_COLUMNS}
+    if not row["Brand"] or not row["Filename"]:
+        raise HTTPException(status_code=422, detail="Brand and Filename are required.")
+    reg.manifest.append(row)
+    _persist(reg)
+    return {"ok": True, "row": row, "manifest": reg.manifest}
+
+
+@app.delete("/api/manifest/{index}")
+def delete_manifest_row(index: int) -> dict:
+    reg = register()
+    if not 0 <= index < len(reg.manifest):
+        raise HTTPException(status_code=404, detail=f"No manifest row at {index}")
+    removed = reg.manifest.pop(index)
+    _persist(reg)
+    return {"ok": True, "removed": removed, "manifest": reg.manifest}
+
+
+@app.post("/api/manifest/queue-gaps")
+def post_queue_gaps(payload: dict = Body(default={})) -> dict:
+    """Queue register rows whose datasheet link never reached the manifest.
+
+    Optionally limited to specific register IDs; with none given, queues them all.
+    """
+    reg = register()
+    wanted = set(payload.get("ids") or [])
+    gaps = manifest_mod.find_gaps(reg.chargers, reg.meters, reg.manifest)
+    if wanted:
+        gaps = [g for g in gaps if g.get("ID") in wanted]
+
+    meter_ids = {m["ID"] for m in reg.meters}
+    added = []
+    for row in gaps:
+        added += manifest_mod.queue_rows(reg.manifest, [row],
+                                         is_meter=row.get("ID") in meter_ids)
+    if added:
+        _persist(reg)
+    remaining = manifest_mod.find_gaps(reg.chargers, reg.meters, reg.manifest)
+    return {"ok": True, "added": added, "manifest": reg.manifest,
+            "gaps": [{"id": g.get("ID"), "brand": g.get("Brand"), "model": g.get("Model"),
+                      "chargeType": g.get("Charge Type"), "url": g.get("Datasheet Link")}
+                     for g in remaining]}
+
+
+# ---------------------------------------------------------------------------
+# downloader
+# ---------------------------------------------------------------------------
+
+_job: downloader.Job | None = None
+
+
+@app.post("/api/download")
+async def post_download(payload: dict = Body(default={})) -> dict:
+    """Start a download run over the queue. Returns immediately; poll for progress."""
+    global _job
+    if _job is not None and _job.running:
+        raise HTTPException(status_code=409, detail="A download is already running.")
+
+    reg = register()
+    rows = reg.manifest
+    if payload.get("filenames"):
+        wanted = set(payload["filenames"])
+        rows = [m for m in rows if m.get("Filename") in wanted]
+
+    _job = downloader.Job()
+    asyncio.create_task(downloader.run(rows, _job))
+    return {"ok": True, "started": len(rows), "driveRoot": str(get_config().technical_root)}
+
+
+@app.get("/api/download/status")
+def get_download_status() -> dict:
+    if _job is None:
+        return {"idle": True}
+    return {"idle": False, **_job.summary()}
