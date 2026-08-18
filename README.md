@@ -144,7 +144,7 @@ Per-file results come back into the queue table as you watch.
 python -m pytest tests/ -q
 ```
 
-111 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+120 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is
