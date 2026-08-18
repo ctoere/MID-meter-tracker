@@ -152,6 +152,21 @@ Every migrated row has `Review Needed` set. The seed data was never manufacturer
 — the original Read Me calls it "a strong starting signal, not a manufacturer-verified
 fact" — so nothing is safe to quote until a human clears the flag.
 
+## Where the shared reading of evidence lives
+
+`app/evidence.py` holds the patterns that decide whether text describes a MID meter as
+standard, optional, or external, plus the negation handling. Both the seed migration and
+the intake pipeline use it — encoding "what counts as an optional MID meter" twice is how
+the two drift apart. `app/intake/markings.py` adds the metrology-marking detection on top.
+
+Two hard-won details in there, both with regression tests:
+
+- every optionality pattern is anchored to a MID reference (`MID`, `MI-003`, `2014/32/EU`),
+  because a bare "variant" matches product-line language like "wall-mounted variant"
+- negation is judged at the meaning-carrying word and does not cross a clause boundary:
+  "No built-in MID; external accessory option" is External, while "No MID in any variant"
+  is a rejection
+
 ## UI
 
 `app/static/` is the prototype (`data/source/zeres_register_console_prototype.html`) split

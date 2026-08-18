@@ -129,6 +129,51 @@ detection prominently at the top. "Queue all gaps" closes them in one action.
 
 Per-file results come back into the queue table as you watch.
 
+## Intake
+
+Drop datasheets, nameplate photos and declarations of conformity onto the Intake tab. For
+each file the app stores it in the Drive tree, records a SHA-256, extracts the text,
+looks for **actual metrology markings**, and proposes a register row with the exact
+sentence that supports it — shown as a diff against the current row.
+
+**Nothing is applied until a person clicks apply.**
+
+What counts as evidence, and what does not:
+
+| Found | Verdict |
+|---|---|
+| `M 26` supplementary metrology marking | evidence — year it was affixed |
+| four-digit notified body after it (`0122`) | evidence |
+| `MI-003` | evidence — the MID category for energy meters |
+| Class A/B/C **with** EN 50470-3 cited | evidence |
+| `MID`, `MID-gecertificeerd`, `2014/32/EU` | evidence |
+| **CE mark** | **never evidence** — safety and EMC, not metrology |
+| Class 1/2 under IEC 62053 | **not** evidence — the older, non-MID scheme |
+| Eichrecht / PTB / BAM | recorded separately — a different regime |
+
+Markings inside a negation don't count: *"this model has no MID meter"* contains the word
+MID and must not be read as a MID claim.
+
+Three rules the pipeline will not break:
+
+- **CE alone proposes `Unknown`** — not `Integrated`, and not `None`.
+- **A photo of the exterior nameplate can only ever propose `Unknown`.** On most wallboxes
+  the meter sits behind the cover, so the outside plate carries no metrology marking either
+  way; its absence proves nothing. The intake asks what surface a photo shows, and an
+  untagged photo concludes nothing.
+- **A DoC that does not cite 2014/32/EU is not MID evidence**, however official it looks.
+  The certificate number, issuing body, directive and models covered are extracted, and the
+  missing directive is stated plainly.
+
+Stored files are never overwritten — a revised datasheet under the same name becomes `_v2`,
+because the earlier revision is what an earlier claim was based on. An identical re-upload
+is recognised by hash rather than stored twice. Files land immediately (losing bytes is
+worse than filing them imprecisely) and move to the right branch when you correct the
+tagging.
+
+OCR needs Tesseract. Without it the intake says so clearly and stores the file anyway,
+rather than silently proposing `Unknown` as though it had looked.
+
 ## Safety properties
 
 - **Never writes in place.** Every save backs up first, writes to a temp file, then
@@ -144,7 +189,7 @@ Per-file results come back into the queue table as you watch.
 python -m pytest tests/ -q
 ```
 
-120 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+157 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is

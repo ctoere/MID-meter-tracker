@@ -4,7 +4,7 @@
    are kept. The difference is that the data comes from the local API instead of
    being parsed in the browser, and edits are written back to the workbook. */
 
-const S = { chargers:[], meters:[], conflicts:[], manifest:[], gaps:[], stats:{}, meta:{},
+const S = { chargers:[], meters:[], conflicts:[], manifest:[], gaps:[], intake:[], stats:{}, meta:{},
             f:{q:"", st:"all", brand:"", rev:false}, mf:"" };
 
 const $  = s => document.querySelector(s);
@@ -564,17 +564,195 @@ async function pollDownload(){
   }catch(e){ clearInterval(dlTimer); $("#dlBtn").disabled = false; toast(e.message); }
 }
 
-/* ───── intake (staging only until phase 5) ───── */
+/* ───── intake ─────
+   Files are stored and read here; the register is only ever changed by a person
+   clicking apply on a proposal. */
+const KINDS = [["datasheet","Datasheet / product sheet"],["photo","Nameplate photo"],
+               ["doc","Declaration of conformity / certificate"],
+               ["manual","Installation manual"],["meter","Meter datasheet"],["other","Something else"]];
+const SURFACES = [["unsure","Not sure"],["exterior","The outside of the enclosure"],
+                  ["meter","The meter itself, cover removed"]];
+
 $("#pick").onclick = () => $("#fInt").click();
-["dragenter","dragover"].forEach(e => document.addEventListener(e, ev => {
-  ev.preventDefault(); const t = ev.target.closest(".dz"); if(t) t.classList.add("hot"); }));
-["dragleave","drop"].forEach(e => document.addEventListener(e, ev => {
-  const t = ev.target.closest(".dz"); if(t) t.classList.remove("hot"); }));
+$("#fInt").onchange = e => { uploadFiles(Array.from(e.target.files)); e.target.value = ""; };
+document.addEventListener("drop", e => {
+  if(!e.target.closest(".dz") && !$("#p-intake").classList.contains("on")) return;
+  e.preventDefault();
+  const files = Array.from(e.dataTransfer.files || []);
+  if(files.length){ goTab("intake"); uploadFiles(files); }
+});
+
+function guessKind(name){
+  if(/\.(jpe?g|png|heic|webp|tiff?)$/i.test(name)) return "photo";
+  if(/conform|doc|certif|ce[-_]?verkl|konformit/i.test(name)) return "doc";
+  if(/manual|install|handleiding/i.test(name)) return "manual";
+  return "datasheet";
+}
+
+async function uploadFiles(files){
+  for(const f of files){
+    const kind = guessKind(f.name);
+    const body = new FormData();
+    body.append("file", f);
+    body.append("kind", kind);
+    body.append("brand", "");
+    body.append("model", "");
+    body.append("surface", kind === "photo" ? "unsure" : "unsure");
+    toast(`Reading ${f.name}…`);
+    try{
+      const res = await fetch("/api/intake", {method:"POST", body});
+      const d = await res.json();
+      if(!res.ok) throw new Error(d.detail || res.statusText);
+      S.intake.push(d);
+      renderIntake(); renderTiles();
+    }catch(e){ toast(`${f.name}: ${e.message}`); }
+  }
+}
+
+async function reprocess(id, patch){
+  const item = S.intake.find(x => x.id === id); if(!item) return;
+  Object.assign(item, patch);
+  // Re-run the proposal with the corrected tagging. The file is already stored,
+  // so this re-reads the copy in the Drive tree rather than re-uploading.
+  const body = new FormData();
+  const blob = new Blob([""], {type:"text/plain"});
+  toast("Re-reading with the new tagging…");
+  try{
+    const d = await api(`/api/intake/${id}/reread`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({kind:item.kind, brand:item.brand, model:item.model,
+                            surface:item.surface, chargerId:item.chargerId})});
+    Object.assign(item, d);
+  }catch(e){ toast(e.message); }
+  renderIntake();
+}
+
+function evidenceList(list, discounted){
+  if(!list.length) return `<div style="color:var(--ink-3);font-size:12.5px">none found</div>`;
+  return list.map(m => `<div style="margin-bottom:7px">
+      <span class="badge ${discounted?"b-Unknown":"b-Integrated"}"><i></i>${esc(m.matched)}</span>
+      <span style="font-size:12px;color:var(--ink-2)"> ${esc(m.detail)}</span>
+      ${m.sentence?`<div class="mono" style="font-size:11.5px;color:var(--ink-3);margin-top:3px;
+        border-left:2px solid var(--grid);padding-left:8px">“${esc(m.sentence)}”</div>`:""}
+    </div>`).join("");
+}
+
+function renderIntake(){
+  $("#cInt").textContent = S.intake.length;
+  $("#intakeEmpty").style.display = S.intake.length ? "none" : "";
+  $("#intakeList").innerHTML = S.intake.map(it => {
+    const p = it.proposal, ex = it.extraction;
+    const diff = p.diff.filter(d => d.changed);
+    return `<div class="icard" data-id="${esc(it.id)}">
+      <div class="pv">
+        <div class="fi"><div style="font-size:26px">▤</div>
+          ${esc((it.filename.split(".").pop()||"").toUpperCase())}<br>
+          ${ex.characters} chars<br>${esc(ex.method)}</div>
+      </div>
+      <div class="bd2">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+          <div class="mono" style="font-size:12px;word-break:break-all">${esc(it.filename)}</div>
+          <button class="del" data-rm="${esc(it.id)}" style="height:28px;padding:3px 9px">✕</button></div>
+
+        <div class="note ${p.status==="Unknown"?"warn":""}" style="margin:10px 0">
+          <b>Proposed: ${badge(p.status)}</b> — ${esc(p.eligibility)}
+          ${p.reasoning.map(r => `<div style="margin-top:6px;font-size:12.5px">${esc(r)}</div>`).join("")}
+        </div>
+
+        ${ex.warnings.length ? ex.warnings.map(w =>
+          `<div class="note warn" style="font-size:12.5px">${esc(w)}</div>`).join("") : ""}
+        ${p.warnings.length ? p.warnings.map(w =>
+          `<div class="note" style="font-size:12.5px">${esc(w)}</div>`).join("") : ""}
+
+        <div class="grid3" style="margin-top:10px">
+          <div class="field"><label>What is it?</label>
+            <select data-k="kind">${KINDS.map(k =>
+              `<option value="${k[0]}" ${it.kind===k[0]?"selected":""}>${k[1]}</option>`).join("")}</select></div>
+          <div class="field"><label>Brand</label>
+            <input data-k="brand" value="${esc(it.brand)}" list="brandList"></div>
+          <div class="field"><label>Model</label><input data-k="model" value="${esc(it.model)}"></div>
+        </div>
+        ${it.kind === "photo" ? `<div class="field" style="margin-top:9px">
+          <label>What surface does this photo show? <b>(changes what can be concluded)</b></label>
+          <select data-k="surface">${SURFACES.map(sf =>
+            `<option value="${sf[0]}" ${it.surface===sf[0]?"selected":""}>${sf[1]}</option>`).join("")}</select>
+          </div>` : ""}
+
+        <div class="sechead" style="margin:14px 0 8px"><h2>MID evidence found</h2><div class="ln"></div></div>
+        ${evidenceList(p.matched, false)}
+        ${p.discounted.length ? `<div class="sechead" style="margin:12px 0 8px">
+            <h2>Seen and discounted</h2><div class="ln"></div></div>${evidenceList(p.discounted, true)}` : ""}
+
+        ${p.doc ? `<div class="sechead" style="margin:14px 0 8px"><h2>Declaration of conformity</h2><div class="ln"></div></div>
+          <div class="kv"><dt>Certificate</dt><dd>${esc(p.doc.certificate_number||"— not found")}</dd></div>
+          <div class="kv"><dt>Issuing body</dt><dd>${esc(p.doc.issuing_body||"— not found")}</dd></div>
+          <div class="kv"><dt>Directive cited</dt><dd>${p.doc.directive_cited
+            ? '<b style="color:var(--good)">2014/32/EU — this is MID evidence</b>'
+            : '<b style="color:var(--critical)">2014/32/EU is NOT cited — this is not MID evidence</b>'}</dd></div>
+          <div class="kv"><dt>Models covered</dt><dd>${p.doc.models_covered.length
+            ? esc(p.doc.models_covered.join("; ")) : "— not stated"}</dd></div>` : ""}
+
+        <div class="sechead" style="margin:14px 0 8px"><h2>Proposed change</h2><div class="ln"></div></div>
+        ${diff.length ? `<table style="font-size:12.5px"><thead><tr><th>Field</th><th>Now</th><th>Proposed</th></tr></thead>
+          <tbody>${diff.map(d => `<tr><td><b>${esc(d.field)}</b></td>
+            <td class="was">${esc(d.current)||"—"}</td><td>${esc(d.proposed)}</td></tr>`).join("")}</tbody></table>`
+          : `<div style="color:var(--ink-3);font-size:12.5px">Nothing would change.</div>`}
+
+        <div class="field" style="margin-top:10px"><label>Link to an existing charger (ID) — leave blank to create a new row</label>
+          <input data-k="chargerId" value="${esc(it.chargerId||"")}" placeholder="chg_0006"></div>
+
+        <div class="acts">
+          <button class="primary" data-apply="${esc(it.id)}" ${it.applied?"disabled":""}>
+            ${it.applied ? "Applied" : "Apply to the register"}</button>
+          <span class="reqnote">Stored at <span class="mono">${esc(it.stored.relative)}</span>
+            · sha256 ${esc(it.stored.sha256.slice(0,16))}…${it.stored.duplicate_of
+              ? ` · identical to a file already filed` : ""}</span>
+        </div>
+        <div class="applyErr"></div>
+      </div></div>`;
+  }).join("");
+
+  const wrap = $("#intakeList");
+  wrap.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => {
+    await api(`/api/intake/${b.dataset.rm}`, {method:"DELETE"});
+    S.intake = S.intake.filter(x => x.id !== b.dataset.rm);
+    renderIntake(); renderTiles();
+  });
+  wrap.querySelectorAll(".icard").forEach(card => {
+    const id = card.dataset.id;
+    card.querySelectorAll("[data-k]").forEach(el => el.onchange = () => {
+      const item = S.intake.find(x => x.id === id);
+      item[el.dataset.k] = el.value;
+      if(["kind","surface"].includes(el.dataset.k)) reprocess(id, {});
+      else renderIntake();
+    });
+  });
+  wrap.querySelectorAll("[data-apply]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.apply;
+    const item = S.intake.find(x => x.id === id);
+    const card = b.closest(".icard");
+    const err = card.querySelector(".applyErr"); err.innerHTML = "";
+    b.disabled = true;
+    try{
+      const d = await api(`/api/intake/${id}/apply`, {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({chargerId: item.chargerId || "", queueManifest: true})});
+      item.applied = true;
+      const i = S.chargers.findIndex(x => x.ID === d.row.ID);
+      if(i >= 0) S.chargers[i] = d.row; else S.chargers.push(d.row);
+      S.stats = d.stats;
+      const reg = await api("/api/register");
+      S.manifest = reg.manifest; S.gaps = reg.gaps;
+      renderAll();
+      toast(`Applied to ${d.row.ID}${d.queued.length?" · queued the datasheet":""}`);
+    }catch(e){ err.innerHTML = `<div class="err">${esc(e.message)}</div>`; b.disabled = false; }
+  });
+}
 $("#lb").onclick = () => $("#lb").classList.remove("on");
 
 /* ───── boot ───── */
 function renderAll(){
   renderTiles(); renderDist(); renderBrands(); renderTable();
-  renderMeters(); renderConflicts(); renderManifest();
+  renderMeters(); renderConflicts(); renderManifest(); renderIntake();
 }
 loadAll();

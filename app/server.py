@@ -10,13 +10,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import asyncio
+import tempfile
+import uuid
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (changelog, conflicts as conflicts_mod, domain, downloader,
                manifest as manifest_mod, schema, storage)
+from .intake import extract as extract_mod, filing, proposals
 from .config import get_config
 
 HERE = Path(__file__).resolve().parent
@@ -364,3 +367,163 @@ def get_download_status() -> dict:
     if _job is None:
         return {"idle": True}
     return {"idle": False, **_job.summary()}
+
+
+# ---------------------------------------------------------------------------
+# intake — propose, never apply
+# ---------------------------------------------------------------------------
+
+#: Staged uploads this session, keyed by id. Cleared when the app restarts;
+#: the files themselves are already safely in the Drive tree.
+_intake: dict[str, dict] = {}
+
+
+@app.post("/api/intake")
+async def post_intake(
+    file: UploadFile = File(...),
+    kind: str = Form("datasheet"),
+    brand: str = Form(""),
+    model: str = Form(""),
+    surface: str = Form(proposals.SURFACE_UNKNOWN),
+    charge_type: str = Form("AC"),
+    charger_id: str = Form(""),
+) -> dict:
+    """Store a document, read it, and propose a register row. Applies nothing."""
+    reg = register()
+    current = reg.charger(charger_id) if charger_id else None
+    if current and not brand:
+        brand, model = current.get("Brand", ""), current.get("Model", "")
+
+    suffix = Path(file.filename or "upload").suffix.lower()
+    staging = Path(tempfile.mkdtemp()) / (file.filename or f"upload{suffix}")
+    staging.write_bytes(await file.read())
+
+    try:
+        stored = filing.store(
+            staging, kind, brand or "Unsorted",
+            filing.suggested_filename(brand, model, kind, suffix),
+            charge_type=(current or {}).get("Charge Type", charge_type))
+        extraction = extract_mod.extract(stored.path)
+        proposal = proposals.build(extraction.text, kind, brand, model, current, surface)
+    finally:
+        staging.unlink(missing_ok=True)
+
+    item_id = f"in_{uuid.uuid4().hex[:8]}"
+    record = {
+        "id": item_id,
+        "filename": file.filename,
+        "kind": kind, "surface": surface,
+        "brand": brand, "model": model, "chargerId": charger_id,
+        "stored": stored.__dict__,
+        "extraction": {"method": extraction.method, "pages": extraction.pages,
+                       "characters": len(extraction.text or ""),
+                       "warnings": extraction.warnings},
+        "proposal": proposal.as_dict(),
+        "applied": False,
+    }
+    _intake[item_id] = record
+    return record
+
+
+@app.get("/api/intake")
+def get_intake() -> dict:
+    return {"items": list(_intake.values())}
+
+
+@app.delete("/api/intake/{item_id}")
+def delete_intake(item_id: str) -> dict:
+    """Drop a staged proposal. The stored file stays in the Drive tree."""
+    _intake.pop(item_id, None)
+    return {"ok": True}
+
+
+@app.post("/api/intake/{item_id}/apply")
+def post_intake_apply(item_id: str, payload: dict = Body(default={})) -> dict:
+    """Apply a proposal a human has approved.
+
+    Called only from the apply button. The status still has to satisfy the same
+    rules as any other edit — the vocabulary, and a stated reason.
+    """
+    item = _intake.get(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No staged intake {item_id}")
+
+    reg = register()
+    proposal = item["proposal"]
+    fields = {**proposal["fields"], **(payload.get("fields") or {})}
+    quote = (proposal["quotes"] or [""])[0]
+    stored = item["stored"]
+
+    provenance = (
+        f"[intake {domain.now_stamp()[:10]}] {item['filename']} filed to {stored['relative']} "
+        f"(sha256 {stored['sha256'][:16]}…). Proposed {proposal['status']}: "
+        f"{proposal['reasoning'][0] if proposal['reasoning'] else ''}"
+        + (f' Quoted: "{quote}"' if quote else ""))
+    reason = str(payload.get("reason") or "").strip() or provenance
+
+    charger_id = payload.get("chargerId") or item.get("chargerId")
+    if charger_id:
+        row = reg.charger(charger_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"No charger {charger_id}")
+        result = _apply_edit(reg, row, "charger",
+                             {"fields": fields, "reason": reason, "appendNote": provenance})
+        applied = row
+    else:
+        row = _new_row(payload | {"fields": fields}, schema.CHARGER_COLUMNS, CHARGER_EDITABLE,
+                       domain.next_id(reg.chargers, schema.ID_PREFIX[schema.SHEET_CHARGERS],
+                                      issued=_issued_ids(reg)))
+        row["Notes (EN)"] = provenance
+        row["Drive Folder"] = str(Path(stored["relative"]).parent)
+        reg.chargers.append(row)
+        changelog.record(reg.change_log, row["ID"],
+                         [("row", "", f"created from intake {item['filename']}")], reason)
+        result = []
+        applied = row
+        _persist(reg)
+
+    # Queue the manifest row too, so the register and the download queue stay in step.
+    queued = []
+    if payload.get("queueManifest", True) and applied.get("Datasheet Link"):
+        queued = manifest_mod.queue_rows(reg.manifest, [applied])
+        if queued:
+            _persist(reg)
+
+    item["applied"] = True
+    return {"ok": True, "row": applied, "changes": result, "queued": queued,
+            "stats": domain.summarise(reg.chargers)}
+
+
+@app.post("/api/intake/{item_id}/reread")
+def post_intake_reread(item_id: str, payload: dict = Body(default={})) -> dict:
+    """Re-run the proposal after a human corrects the tagging.
+
+    Re-reads the stored copy rather than the upload — the file is already in the
+    Drive tree and its bytes are what any later claim rests on. Retagging a photo
+    from "not sure" to "the meter itself" is the common case, and it legitimately
+    changes what can be concluded.
+    """
+    item = _intake.get(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No staged intake {item_id}")
+
+    reg = register()
+    item.update({k: str(payload.get(k, item.get(k, "")) or "")
+                 for k in ("kind", "brand", "model", "surface", "chargerId")})
+    current = reg.charger(item["chargerId"]) if item["chargerId"] else None
+
+    # Now that a human has said what this is, move the captured copy to where it
+    # belongs — it was filed under Unsorted the moment it arrived.
+    stored = filing.StoredFile(**item["stored"])
+    stored = filing.refile(stored, item["kind"], item["brand"] or "Unsorted", item["model"],
+                           charge_type=(current or {}).get("Charge Type", "AC"))
+    item["stored"] = stored.__dict__
+
+    extraction = extract_mod.extract(stored.path)
+    proposal = proposals.build(extraction.text, item["kind"], item["brand"], item["model"],
+                               current, item["surface"])
+    item["extraction"] = {"method": extraction.method, "pages": extraction.pages,
+                          "characters": len(extraction.text or ""),
+                          "warnings": extraction.warnings}
+    item["proposal"] = proposal.as_dict()
+    return item
