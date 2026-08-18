@@ -1,0 +1,16 @@
+# Zeres MID Register — pinned dependencies (Python 3.11+)
+fastapi==0.115.6
+uvicorn==0.34.0
+openpyxl==3.1.5
+httpx==0.28.1
+python-dotenv==1.0.1
+jinja2==3.1.5
+python-multipart==0.0.20
+
+# Phase 5 — intake text extraction
+pdfplumber==0.11.5
+pytesseract==0.3.13
+Pillow==11.1.0
+
+# dev
+pytest==8.3.4

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeres — MID Register Console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  color-scheme:light;
+  --plane:#f9f9f7; --surface:#fcfcfb; --surface-2:#f2f1ed;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+  --grid:#e1e0d9; --rule:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --accent:#2a78d6; --accent-soft:rgba(42,120,214,.10);
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b; --muted:#898781;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+  --ink:#fff; --ink-2:#c3c2b7; --ink-3:#898781;
+  --grid:#2c2c2a; --rule:#383835; --ring:rgba(255,255,255,.10);
+  --accent:#3987e5; --accent-soft:rgba(57,135,229,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--rule);border-radius:8px;padding:7px 10px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+::placeholder{color:var(--ink-3)}
+a{color:var(--accent)}
+
+header.top{border-bottom:1px solid var(--grid);background:var(--surface);position:sticky;top:0;z-index:40}
+.top-in{max-width:1420px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+.bl{display:flex;flex-direction:column;line-height:1.25}
+.bl b{font-size:15px}.bl span{font-size:12px;color:var(--ink-2)}
+.sp{flex:1}
+.ghost{background:transparent;border:1px solid var(--rule);border-radius:8px;padding:6px 12px;color:var(--ink-2)}
+.ghost:hover{background:var(--surface-2);color:var(--ink)}
+.primary{background:var(--accent);color:#fff;border:1px solid transparent;border-radius:8px;padding:7px 14px;font-weight:500}
+.primary:hover{filter:brightness(1.08)}
+.pill{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--ring);
+  border-radius:20px;padding:4px 12px;font-size:12px;color:var(--ink-2)}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.pill.live i{background:var(--good)}
+
+nav.tabs{background:var(--surface);border-bottom:1px solid var(--grid);position:sticky;top:57px;z-index:39;padding:0 24px;overflow-x:auto}
+nav.tabs .in{max-width:1420px;margin:0 auto;display:flex;gap:2px}
+.tab{background:transparent;border:0;border-bottom:2px solid transparent;padding:11px 14px;color:var(--ink-2);font-weight:500;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .c{display:inline-block;margin-left:6px;background:var(--surface-2);border-radius:20px;padding:1px 7px;font-size:11px;font-variant-numeric:tabular-nums}
+.tab .c.alert{background:rgba(208,59,59,.16);color:var(--critical);font-weight:600}
+.wrap{max-width:1420px;margin:0 auto;padding:0 24px 90px}
+.panel{display:none;padding-top:20px}.panel.on{display:block}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:16px}
+.tile{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:13px 15px}
+.tile .l{font-size:11.5px;color:var(--ink-2);margin-bottom:5px}
+.tile .v{font-size:27px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.tile .s{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.tile.warn{border-color:var(--warning);background:rgba(250,178,25,.07)}
+
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:17px}
+.dist{display:flex;height:32px;border-radius:6px;overflow:hidden;background:var(--surface-2);gap:2px}
+.dist span{display:grid;place-items:center;font-size:11.5px;font-weight:600;color:#fff;min-width:0;overflow:hidden;
+  white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.42)}
+.legend{display:flex;flex-wrap:wrap;gap:15px;margin-top:10px;font-size:12px;color:var(--ink-2)}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px}
+
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:20px;padding:2px 9px 2px 7px;font-size:11.5px;
+  font-weight:500;white-space:nowrap;border:1px solid var(--ring)}
+.badge i{width:7px;height:7px;border-radius:50%;flex:none}
+.b-Integrated{background:rgba(12,163,12,.13)} .b-Integrated i{background:var(--good)}
+.b-Optional{background:rgba(250,178,25,.18)} .b-Optional i{background:var(--warning)}
+.b-External{background:rgba(236,131,90,.16)} .b-External i{background:var(--serious)}
+.b-None{background:rgba(208,59,59,.12)} .b-None i{background:var(--critical)}
+.b-Unknown{background:var(--surface-2)} .b-Unknown i{background:var(--muted)}
+
+.filters{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.filters input[type=search]{min-width:250px;flex:1}
+.chipset{display:flex;gap:3px;background:var(--surface-2);padding:3px;border-radius:9px}
+.chip{border:0;background:transparent;border-radius:7px;padding:5px 11px;color:var(--ink-2);font-size:12.5px}
+.chip[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.09);font-weight:500}
+
+.tw{background:var(--surface);border:1px solid var(--ring);border-radius:10px;overflow:auto;max-height:64vh}
+table{border-collapse:collapse;width:100%;font-size:13px}
+thead th{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--rule);text-align:left;
+  padding:9px 12px;font-weight:600;font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap;z-index:2}
+tbody td{border-bottom:1px solid var(--grid);padding:8px 12px;vertical-align:top}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--accent-soft)}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:400px}
+.empty{padding:48px 20px;text-align:center;color:var(--ink-2)}
+.flag{display:inline-block;background:rgba(250,178,25,.2);color:var(--ink);border-radius:5px;padding:0 6px;font-size:11px;margin-left:5px}
+
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(580px,100vw);background:var(--surface);
+  border-left:1px solid var(--rule);z-index:60;transform:translateX(100%);transition:transform .22s;display:flex;flex-direction:column;
+  box-shadow:-14px 0 40px rgba(0,0,0,.13)}
+.drawer.on{transform:none}
+.dh{padding:15px 20px;border-bottom:1px solid var(--grid);display:flex;gap:12px;align-items:flex-start}
+.db{padding:18px 20px;overflow:auto;flex:1}
+.kv{margin-bottom:13px}
+.kv dt{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-3);margin-bottom:2px}
+.kv dd{margin:0;word-break:break-word}
+.bd{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:55;opacity:0;pointer-events:none;transition:opacity .2s}
+.bd.on{opacity:1;pointer-events:auto}
+
+.dz{border:1.5px dashed var(--rule);border-radius:10px;padding:28px 20px;text-align:center;background:var(--surface);transition:.15s}
+.dz.hot{border-color:var(--accent);background:var(--accent-soft)}
+.dz h3{font-size:15px;margin-bottom:5px}
+.dz p{margin:0 0 12px;color:var(--ink-2);font-size:13px}
+
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:11px 14px;border-radius:0 8px 8px 0;font-size:13px;margin:14px 0}
+.note.warn{border-left-color:var(--warning);background:rgba(250,178,25,.13)}
+.note.crit{border-left-color:var(--critical);background:rgba(208,59,59,.10)}
+.sechead{display:flex;align-items:center;gap:10px;margin:24px 0 10px}
+.sechead h2{font-size:15px}.sechead .ln{flex:1;height:1px;background:var(--grid)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11.5px;color:var(--ink-2);font-weight:500}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+code.k{background:var(--surface-2);border:1px solid var(--grid);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+
+/* conflict cards */
+.cf{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:15px;margin-bottom:11px;
+  border-left:3px solid var(--warning)}
+.cf.opposed{border-left-color:var(--critical)}
+.cf .hd{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
+.cf .hd b{font-size:14.5px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:760px){.opts{grid-template-columns:1fr}}
+.opt{border:1px solid var(--rule);border-radius:8px;padding:11px 13px;cursor:pointer;background:var(--surface)}
+.opt:hover{border-color:var(--accent)}
+.opt.sel{border-color:var(--accent);background:var(--accent-soft);border-width:2px;padding:10px 12px}
+.opt .src{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:5px}
+.opt p{margin:7px 0 0;font-size:12px;color:var(--ink-2)}
+.resolved{border-left-color:var(--good)!important;opacity:.7}
+
+.qrow{display:grid;grid-template-columns:1fr 1.2fr .5fr 1.8fr auto;gap:8px;align-items:end;padding:10px;
+  border:1px solid var(--grid);border-radius:9px;margin-bottom:7px;background:var(--surface)}
+@media(max-width:1000px){.qrow{grid-template-columns:1fr 1fr}}
+.del{background:transparent;border:1px solid var(--rule);border-radius:7px;color:var(--ink-3);padding:7px 10px;height:34px}
+.del:hover{color:var(--critical);border-color:var(--critical)}
+
+.icard{background:var(--surface);border:1px solid var(--ring);border-radius:10px;display:grid;
+  grid-template-columns:190px 1fr;overflow:hidden;margin-bottom:12px}
+@media(max-width:820px){.icard{grid-template-columns:1fr}}
+.icard .pv{background:var(--surface-2);display:grid;place-items:start center;padding:12px;border-right:1px solid var(--grid)}
+.icard .pv img{max-width:100%;max-height:190px;border-radius:6px;cursor:zoom-in}
+.icard .pv .fi{text-align:center;color:var(--ink-3);padding:24px 8px;font-size:12px}
+.icard .bd2{padding:14px}
+textarea.out{width:100%;min-height:190px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:var(--plane);
+  padding:10px 20px;border-radius:9px;z-index:99;transition:transform .25s;font-size:13px}
+.toast.on{transform:translateX(-50%)}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:90;display:none;place-items:center;padding:30px}
+.lb.on{display:grid}.lb img{max-width:100%;max-height:100%;border-radius:8px}
+ul.tight{margin:7px 0;padding-left:20px}ul.tight li{margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="top-in">
+  <div class="logo">Z</div>
+  <div class="bl"><b>MID Register Console</b><span>Zeres · chargers, meters &amp; datasheet manifest</span></div>
+  <div class="sp"></div>
+  <span class="pill" id="state"><i></i><span>No file loaded</span></span>
+  <button class="ghost" id="loadBtn">Load register</button>
+  <button class="ghost" id="themeBtn">Dark</button>
+</div></header>
+
+<nav class="tabs"><div class="in">
+  <button class="tab" aria-selected="true" data-t="register">Register<span class="c" id="cReg">0</span></button>
+  <button class="tab" aria-selected="false" data-t="conflicts">Conflicts<span class="c alert" id="cCon">0</span></button>
+  <button class="tab" aria-selected="false" data-t="meters">Meters<span class="c" id="cMet">0</span></button>
+  <button class="tab" aria-selected="false" data-t="manifest">Manifest<span class="c" id="cMan">0</span></button>
+  <button class="tab" aria-selected="false" data-t="intake">Intake<span class="c" id="cInt">0</span></button>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ═══════════ REGISTER ═══════════ -->
+<section class="panel on" id="p-register">
+  <div id="noFile" class="note warn">
+    <b>Load the register to begin.</b> Drag <code class="k">Zeres_MID_Register.xlsx</code> anywhere onto this page,
+    or paste a published Google Sheet URL below. Everything is parsed in your browser — nothing is uploaded.
+    <div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">
+      <input id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/…/pub?output=csv" style="flex:1;min-width:280px">
+      <button class="primary" id="loadSheet">Load from Sheet</button>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="l">Chargers</div><div class="v" id="tTot">0</div><div class="s" id="tBrands">—</div></div>
+    <div class="tile"><div class="l">Eligible as sold</div><div class="v" id="tInt">0</div><div class="s">Integrated</div></div>
+    <div class="tile"><div class="l">Eligible, check unit</div><div class="v" id="tOpt">0</div><div class="s">Optional + External</div></div>
+    <div class="tile"><div class="l">Not eligible</div><div class="v" id="tNone">0</div><div class="s">no MID metering</div></div>
+    <div class="tile warn"><div class="l">Needs review</div><div class="v" id="tRev">0</div><div class="s">not safe to quote yet</div></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <h2 style="font-size:14px">MID status across the register</h2><span class="mono" style="color:var(--ink-3);font-size:12px" id="distNote"></span>
+    </div>
+    <div class="dist" id="dist"></div><div class="legend" id="leg"></div>
+  </div>
+
+  <div class="filters">
+    <input type="search" id="q" placeholder="Search brand, model, meter, notes…">
+    <div class="chipset" id="stChips">
+      <button class="chip" aria-pressed="true" data-s="all">All</button>
+      <button class="chip" aria-pressed="false" data-s="Integrated">Integrated</button>
+      <button class="chip" aria-pressed="false" data-s="Optional">Optional</button>
+      <button class="chip" aria-pressed="false" data-s="External">External</button>
+      <button class="chip" aria-pressed="false" data-s="None">None</button>
+      <button class="chip" aria-pressed="false" data-s="Unknown">Unknown</button>
+    </div>
+    <button class="ghost" id="revBtn" aria-pressed="false">Needs review only</button>
+    <button class="ghost" id="expBtn">Export .xlsx</button>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>kW</th><th>MID status</th><th>Meter</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody id="tb"></tbody></table></div>
+  <div class="mono" style="margin-top:8px;color:var(--ink-3);font-size:12px" id="rowNote"></div>
+</section>
+
+<!-- ═══════════ CONFLICTS ═══════════ -->
+<section class="panel" id="p-conflicts">
+  <div class="note crit">
+    <b>These are rows where the two old systems gave different answers.</b> Nothing was auto-picked — each one needs a
+    decision. The ones marked <b>opposed</b> are the serious ones: one source says eligible, the other says not, so the
+    answer a client got depended on which system the helpdesk happened to open.
+  </div>
+  <div class="filters">
+    <span class="mono" style="color:var(--ink-3);font-size:12px" id="cfCount"></span>
+    <div class="sp" style="flex:1"></div>
+    <button class="ghost" id="cfExport">Export decisions</button>
+  </div>
+  <div id="cfList"></div>
+</section>
+
+<!-- ═══════════ METERS ═══════════ -->
+<section class="panel" id="p-meters">
+  <div class="note">
+    <b>The meter is what carries MID certification, not the charger.</b> These are the metering components confirmed
+    inside specific chargers, or sold standalone. Cross-referenced from the register's Meter columns.
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>MID</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody id="mtb"></tbody></table></div>
+</section>
+
+<!-- ═══════════ MANIFEST ═══════════ -->
+<section class="panel" id="p-manifest">
+  <div class="tiles">
+    <div class="tile"><div class="l">Queued</div><div class="v" id="mTot">0</div><div class="s">rows in manifest.csv</div></div>
+    <div class="tile warn"><div class="l">Gaps</div><div class="v" id="mGap">0</div><div class="s">register rows with a link, not queued</div></div>
+    <div class="tile"><div class="l">Staged here</div><div class="v" id="mNew">0</div><div class="s">added this session</div></div>
+  </div>
+
+  <div class="note">
+    <b>What the manifest is.</b> The download queue for <code class="k">sync_datasheets.ps1</code> — one row per datasheet
+    to fetch into the Drive folder tree. A register row whose datasheet link never made it here is the recurring bug:
+    the register looks complete while the download queue quietly has holes.
+  </div>
+
+  <div class="sechead"><h2>Gaps</h2><div class="ln"></div>
+    <button class="primary" id="fixGaps">Queue all gaps</button></div>
+  <div id="gapList"></div>
+
+  <div class="sechead"><h2>Queue</h2><div class="ln"></div>
+    <input type="search" id="mq" placeholder="Filter…" style="max-width:240px"></div>
+  <div class="tw" style="max-height:46vh"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>Folder</th><th>Filename</th><th>URL</th><th></th></tr></thead>
+    <tbody id="mtb2"></tbody></table></div>
+  <div class="acts">
+    <button class="primary" id="expMan">Download manifest.csv</button>
+    <button class="ghost" id="copyMan">Copy new rows</button>
+  </div>
+</section>
+
+<!-- ═══════════ INTAKE ═══════════ -->
+<section class="panel" id="p-intake">
+  <div class="note">
+    <b>How processing actually works right now.</b> This page is a plain HTML file — it can stage and describe your
+    uploads, but it can't read a PDF or a nameplate photo itself. You drop files here, tag what each one is, and it
+    produces a processing batch. Claude reads the files, extracts brand / model / MID status / meter details and the
+    exact quoted wording, files them into the right Drive folder, and hands back the updated register rows and manifest
+    entries. <b>The staging is here; the extraction is the handoff.</b>
+  </div>
+
+  <div class="dz" id="dz">
+    <h3>Drop datasheets, photos and conformity statements</h3>
+    <p>PDFs, images, EU declarations of conformity — mixed batches are fine.</p>
+    <button class="primary" id="pick">Choose files</button>
+  </div>
+
+  <div id="intakeList" style="margin-top:15px"></div>
+
+  <div id="intakeEmpty" class="card" style="margin-top:15px">
+    <h2 style="font-size:15px;margin-bottom:9px">What gets extracted from each type</h2>
+    <div class="grid3">
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-Integrated"><i></i>Datasheet</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Brand, model, variant / article number</li>
+          <li>The exact sentence stating MID status</li>
+          <li>Meter make and model, if named</li>
+          <li>Accuracy class (EN 50470-3 A/B/C)</li>
+          <li>Document version and date</li>
+        </ul>
+      </div>
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-Optional"><i></i>Nameplate photo</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Brand, type, serial, article number</li>
+          <li>M-in-rectangle marking + year</li>
+          <li>Four-digit notified body number</li>
+          <li>Accuracy class, MI-003</li>
+          <li>Whether it's the meter or the enclosure</li>
+        </ul>
+      </div>
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-External"><i></i>Conformity statement</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Certificate / DoC number</li>
+          <li>Issuing notified body</li>
+          <li>Directive cited (2014/32/EU, MI-003)</li>
+          <li>Exactly which models it covers</li>
+          <li>Issue date and validity</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note warn" style="margin-bottom:0">
+      <b>A conformity statement is the strongest evidence available</b> — stronger than a datasheet, because it names the
+      notified body and the models in scope. It is also the most commonly over-read: a DoC covering "the EVSE" is not a
+      MID certificate unless it cites 2014/32/EU. Worth checking rather than assuming.
+    </div>
+  </div>
+</section>
+
+</div>
+
+<div class="bd" id="bd"></div>
+<aside class="drawer" id="dr">
+  <div class="dh"><div style="flex:1"><h2 id="drT" style="font-size:16px">—</h2><div class="mono" style="font-size:12px;color:var(--ink-3)" id="drS"></div></div>
+    <button class="ghost" id="drC">Close</button></div>
+  <div class="db" id="drB"></div>
+</aside>
+
+<div class="lb" id="lb"><img id="lbi" alt=""></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fReg" accept=".xlsx,.xlsm,.csv" hidden>
+<input type="file" id="fInt" accept="image/*,.pdf,.doc,.docx" multiple hidden>
+
+<script>
+"use strict";
+const S = { chargers:[], meters:[], conflicts:[], manifest:[], staged:[], intake:[],
+            f:{q:"",st:"all",rev:false}, loaded:false };
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const STATUSES=["Integrated","Optional","External","None","Unknown"];
+const COLOR={Integrated:"var(--good)",Optional:"var(--warning)",External:"var(--serious)",None:"var(--critical)",Unknown:"var(--muted)"};
+const ELIGIBLE={Integrated:"eligible as sold",Optional:"eligible — check the individual unit",
+  External:"eligible if an external MID meter is fitted",None:"not eligible as sold",Unknown:"not established"};
+let tT;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(tT);tT=setTimeout(()=>t.classList.remove("on"),2300)}
+function dl(n,t,m){const b=new Blob([t],{type:m||"text/plain;charset=utf-8"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
+function badge(v){const s=STATUSES.includes(v)?v:"Unknown";return `<span class="badge b-${s}"><i></i>${esc(v||"Unknown")}</span>`}
+function slug(s){return String(s||"").trim().replace(/[^\w.-]+/g,"_").replace(/^_+|_+$/g,"")}
+
+$("#themeBtn").onclick=function(){const d=document.documentElement.getAttribute("data-theme")==="dark";
+  document.documentElement.setAttribute("data-theme",d?"light":"dark");this.textContent=d?"Dark":"Light";renderDist()};
+$$(".tab").forEach(t=>t.onclick=()=>{$$(".tab").forEach(x=>x.setAttribute("aria-selected",String(x===t)));
+  $$(".panel").forEach(p=>p.classList.toggle("on",p.id==="p-"+t.dataset.t));window.scrollTo({top:0,behavior:"smooth"})});
+function goTab(n){$$(".tab").find(t=>t.dataset.t===n).click()}
+
+/* ───── load ───── */
+function xlsxReady(){if(typeof XLSX!=="undefined")return true;toast("Spreadsheet engine didn't load — check your connection and reload.");return false}
+async function loadReg(file){
+  if(!xlsxReady())return;
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+    const g=n=>wb.Sheets[n]?XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:"",raw:false}):[];
+    S.chargers=g("Chargers").filter(r=>r.Brand);
+    S.meters=g("Meters").filter(r=>r.Brand);
+    S.conflicts=g("Conflicts").filter(r=>r.Brand).map(c=>({...c,pick:""}));
+    S.manifest=g("Manifest").filter(r=>r.Url||r.Brand);
+    if(!S.chargers.length)return toast("No Chargers sheet found — is that the register file?");
+    S.loaded=true;$("#noFile").style.display="none";
+    const p=$("#state");p.classList.add("live");p.lastElementChild.textContent=file.name;
+    renderAll();toast(`Loaded ${S.chargers.length} chargers, ${S.conflicts.length} conflicts`);
+  }catch(e){toast("Could not read that file: "+e.message)}
+}
+/* CSV fallback — works with no library at all, in case the spreadsheet engine is blocked
+   by a corporate proxy. Detects which sheet a dropped CSV is from its headers. */
+async function loadCSVFile(file){
+  try{
+    const rows=parseCSV(await file.text()); if(rows.length<2)return toast("That CSV looks empty.");
+    const hdr=rows[0].map(h=>h.trim());
+    const objs=rows.slice(1).map(r=>Object.fromEntries(hdr.map((h,i)=>[h,r[i]||""])));
+    if(hdr.includes("MID Status")&&hdr.includes("Model")&&hdr.includes("Brand")){
+      if(hdr.includes("Charge Type")||hdr.includes("In Zite")){S.chargers=objs.filter(r=>r.Brand);}
+      else {S.meters=objs.filter(r=>r.Brand);}
+    } else if(hdr.includes("Tracker says")){ S.conflicts=objs.filter(r=>r.Brand).map(c=>({...c,pick:""})); }
+    else if(hdr.includes("Url")&&hdr.includes("SubFolder")){ S.manifest=objs.filter(r=>r.Url||r.Brand); }
+    else return toast("Couldn't tell which sheet that CSV is — check the header row.");
+    S.loaded=true;$("#noFile").style.display="none";
+    const p=$("#state");p.classList.add("live");p.lastElementChild.textContent=file.name;
+    renderAll();toast(`Loaded ${file.name}`);
+  }catch(e){toast("Could not read that CSV: "+e.message)}
+}
+$("#loadBtn").onclick=()=>$("#fReg").click();
+$("#fReg").onchange=e=>{const f=e.target.files[0];if(!f)return;
+  /\.csv$/i.test(f.name)?loadCSVFile(f):loadReg(f)};
+$("#loadSheet").onclick=async()=>{
+  let u=$("#sheetUrl").value.trim(); if(!u)return toast("Paste a published Sheet URL first.");
+  if(/\/edit/.test(u)) u=u.replace(/\/edit.*$/,"/gviz/tq?tqx=out:csv");
+  try{
+    const r=await fetch(u); if(!r.ok)throw new Error("HTTP "+r.status);
+    const rows=parseCSV(await r.text()); const hdr=rows[0].map(h=>h.trim());
+    S.chargers=rows.slice(1).map(r=>Object.fromEntries(hdr.map((h,i)=>[h,r[i]||""]))).filter(r=>r.Brand);
+    S.loaded=true;$("#noFile").style.display="none";
+    const p=$("#state");p.classList.add("live");p.lastElementChild.textContent="Google Sheet";
+    renderAll();toast(`Loaded ${S.chargers.length} rows from the Sheet`);
+  }catch(e){toast("Couldn't fetch that Sheet — is it published to the web? ("+e.message+")")}
+};
+function parseCSV(t){const rows=[];let row=[],cur="",q=false;t=t.replace(/^﻿/,"");
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;else if(c===","){row.push(cur);cur=""}
+    else if(c==="\n"){row.push(cur);rows.push(row);row=[];cur=""}else if(c!=="\r")cur+=c}
+  if(cur!==""||row.length){row.push(cur);rows.push(row)}
+  return rows.filter(r=>r.some(x=>String(x).trim()!==""))}
+function toCSV(rows){const q=v=>{const s=String(v??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  return rows.map(r=>r.map(q).join(",")).join("\r\n")+"\r\n"}
+
+/* ───── drag & drop routing ───── */
+["dragenter","dragover"].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();
+  const t=ev.target.closest(".dz");if(t)t.classList.add("hot")}));
+["dragleave","drop"].forEach(e=>document.addEventListener(e,ev=>{const t=ev.target.closest(".dz");if(t)t.classList.remove("hot")}));
+document.addEventListener("drop",e=>{e.preventDefault();
+  const fs=Array.from(e.dataTransfer.files||[]);
+  const reg=fs.filter(f=>/\.(xlsx|xlsm|csv)$/i.test(f.name));
+  const oth=fs.filter(f=>!/\.(xlsx|xlsm)$/i.test(f.name));
+  if(reg.length)loadReg(reg[0]);
+  if(oth.length){addIntake(oth);goTab("intake")}});
+
+/* ───── register ───── */
+function needsReview(r){return String(r["Review Needed"]||"").trim()!==""}
+function filtered(){const q=S.f.q.toLowerCase();
+  return S.chargers.filter(r=>{
+    if(S.f.st!=="all"&&String(r["MID Status"]).trim()!==S.f.st)return false;
+    if(S.f.rev&&!needsReview(r))return false;
+    if(!q)return true;
+    return Object.values(r).some(v=>String(v).toLowerCase().includes(q))})}
+function renderTiles(){
+  const C=S.chargers,n=C.length,c=v=>C.filter(r=>String(r["MID Status"]).trim()===v).length;
+  $("#tTot").textContent=n.toLocaleString();
+  $("#tBrands").textContent=new Set(C.map(r=>r.Brand)).size+" brands";
+  $("#tInt").textContent=c("Integrated");
+  $("#tOpt").textContent=c("Optional")+c("External");
+  $("#tNone").textContent=c("None");
+  $("#tRev").textContent=C.filter(needsReview).length;
+  $("#cReg").textContent=n;$("#cMet").textContent=S.meters.length;
+  $("#cCon").textContent=S.conflicts.filter(c=>!c.pick).length;
+  $("#cMan").textContent=S.manifest.length+S.staged.length;
+  $("#cInt").textContent=S.intake.length;
+}
+function renderDist(){
+  const C=S.chargers,n=C.length||1,bar=$("#dist"),leg=$("#leg");bar.innerHTML="";leg.innerHTML="";
+  STATUSES.forEach(s=>{const v=C.filter(r=>String(r["MID Status"]).trim()===s).length;
+    if(v>0){const el=document.createElement("span");el.style.background=COLOR[s];el.style.flexGrow=v;el.style.flexBasis="0";
+      el.textContent=(v/n>.08)?`${s} ${v}`:"";el.title=`${s}: ${v} (${Math.round(v/n*100)}%) — ${ELIGIBLE[s]}`;
+      if(s==="Optional")el.style.color="#3a2a00";bar.appendChild(el)}
+    leg.insertAdjacentHTML("beforeend",`<span><i style="background:${COLOR[s]}"></i>${s} <b style="color:var(--ink)">${v}</b></span>`)});
+  const el=C.filter(r=>["Integrated","Optional","External"].includes(String(r["MID Status"]).trim())).length;
+  $("#distNote").textContent=n?`${Math.round(el/n*100)}% of the register is ERE-eligible in some form`:"";
+}
+function renderTable(){
+  const rows=filtered(),cap=500,tb=$("#tb");
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty">${S.loaded?"Nothing matches those filters.":"Load the register to see records."}</div></td></tr>`;
+    $("#rowNote").textContent="";return}
+  tb.innerHTML=rows.slice(0,cap).map(r=>{
+    const m=[r["Meter Brand"],r["Meter Model"]].filter(Boolean).join(" ");
+    return `<tr data-id="${esc(r.ID)}">
+      <td><b>${esc(r.Brand)}</b></td><td>${esc(r.Model)}</td>
+      <td class="mono" style="color:var(--ink-3)">${esc(r["Max kW"]||"")}</td>
+      <td>${badge(r["MID Status"])}${needsReview(r)?'<span class="flag">review</span>':""}</td>
+      <td style="font-size:12.5px">${m?esc(m):'<span style="color:var(--ink-3)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--ink-2)">${esc(String(r.Source||"").slice(0,40))}</td>
+      <td style="font-size:12px;color:var(--ink-2)"><div class="clamp">${esc(r["Notes (EN)"]||r["Notes (NL)"]||"")}</div></td></tr>`}).join("");
+  $$("#tb tr").forEach(tr=>tr.onclick=()=>openRow(tr.dataset.id));
+  $("#rowNote").textContent=rows.length>cap?`Showing first ${cap} of ${rows.length} matches — narrow the search.`:`${rows.length} of ${S.chargers.length} rows`;
+}
+function openRow(id){
+  const r=S.chargers.find(x=>x.ID===id);if(!r)return;
+  $("#drT").textContent=`${r.Brand} — ${r.Model}`;
+  $("#drS").innerHTML=`${esc(r.ID)} · ${esc(r["Charge Type"]||"")} ${badge(r["MID Status"])}`;
+  const L=v=>v?`<a href="${esc(v)}" target="_blank" rel="noopener">${esc(String(v).slice(0,70))}</a>`:'<span style="color:var(--ink-3)">—</span>';
+  const F=(k,v)=>`<div class="kv"><dt>${k}</dt><dd>${v}</dd></div>`;
+  $("#drB").innerHTML=
+    `<div class="note" style="margin-top:0"><b>${esc(r["MID Status"])}</b> — ${ELIGIBLE[r["MID Status"]]||""}</div>`+
+    (needsReview(r)?`<div class="note warn"><b>Review needed.</b> ${esc(r["Review Needed"])}</div>`:"")+
+    (r.Conflict?`<div class="note crit"><b>Sources disagreed.</b> ${esc(r.Conflict)}</div>`:"")+
+    F("Meter",[r["Meter Brand"],r["Meter Model"]].filter(Boolean).join(" ")||'<span style="color:var(--ink-3)">not disclosed</span>')+
+    F("Max kW",esc(r["Max kW"]||"—"))+F("Research status",esc(r["Research Status"]||"—"))+
+    F("Datasheet",L(r["Datasheet Link"]))+F("Certificate",L(r["Certificate Link"]))+
+    F("Drive folder",`<span class="mono">${esc(r["Drive Folder"]||"—")}</span>`)+
+    F("Source",esc(r.Source||"—"))+
+    F("Present in",`${r["In Tracker"]?"tracker":""}${r["In Tracker"]&&r["In Zite"]?" + ":""}${r["In Zite"]?"Zite":""}`||"—")+
+    F("Notes (EN)",esc(r["Notes (EN)"]||"—"))+
+    (r["Notes (NL)"]?F("Notes (NL)",esc(r["Notes (NL)"])):"");
+  $("#dr").classList.add("on");$("#bd").classList.add("on");
+}
+$("#drC").onclick=$("#bd").onclick=()=>{$("#dr").classList.remove("on");$("#bd").classList.remove("on")};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("#dr").classList.remove("on");$("#bd").classList.remove("on");$("#lb").classList.remove("on")}});
+$("#q").oninput=e=>{S.f.q=e.target.value;renderTable()};
+$("#stChips").onclick=e=>{const b=e.target.closest(".chip");if(!b)return;S.f.st=b.dataset.s;
+  $$("#stChips .chip").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));renderTable()};
+$("#revBtn").onclick=function(){S.f.rev=!S.f.rev;this.setAttribute("aria-pressed",String(S.f.rev));
+  this.style.borderColor=S.f.rev?"var(--accent)":"";this.style.color=S.f.rev?"var(--accent)":"";renderTable()};
+$("#expBtn").onclick=()=>{
+  if(!xlsxReady()||!S.loaded)return toast("Load the register first.");
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.chargers),"Chargers");
+  if(S.meters.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.meters),"Meters");
+  if(S.conflicts.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(S.conflicts),"Conflicts");
+  const man=S.manifest.concat(S.staged);
+  if(man.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(man),"Manifest");
+  XLSX.writeFile(wb,"Zeres_MID_Register.xlsx");toast("Exported");
+};
+
+/* ───── conflicts ───── */
+function renderConflicts(){
+  const list=$("#cfList"),open=S.conflicts.filter(c=>!c.pick).length;
+  $("#cfCount").textContent=S.conflicts.length?`${open} open · ${S.conflicts.length-open} resolved of ${S.conflicts.length}`:"";
+  if(!S.conflicts.length){list.innerHTML=`<div class="empty card">${S.loaded?"No conflicts — the sources agreed everywhere.":"Load the register first."}</div>`;return}
+  const opposed=c=>{const a=c["Tracker says"],b=c["Zite says"];
+    const el=v=>["Integrated","Optional","External"].includes(v);
+    return (el(a)&&b==="None")||(el(b)&&a==="None")};
+  list.innerHTML=S.conflicts.map((c,i)=>`
+    <div class="cf ${opposed(c)?"opposed":""} ${c.pick?"resolved":""}">
+      <div class="hd"><b>${esc(c.Brand)} — ${esc(c.Model)}</b>
+        <span>${opposed(c)?'<span class="badge b-None"><i></i>opposed</span> ':""}${c.pick?`<span class="badge b-Integrated"><i></i>resolved: ${esc(c.pick)}</span>`:""}</span></div>
+      <div class="opts">
+        <div class="opt ${c.pick===c["Tracker says"]?"sel":""}" data-i="${i}" data-v="${esc(c["Tracker says"])}">
+          <div class="src">Research tracker</div>${badge(c["Tracker says"])}
+          <p>${esc(String(c["Tracker note"]||"").slice(0,240))||"no note"}</p></div>
+        <div class="opt ${c.pick===c["Zite says"]?"sel":""}" data-i="${i}" data-v="${esc(c["Zite says"])}">
+          <div class="src">Zite dashboard <span class="mono">(${esc(c["Zite original value"])})</span></div>${badge(c["Zite says"])}
+          <p>${esc(String(c["Zite note"]||"").slice(0,240))||"no note"}</p></div>
+      </div></div>`).join("");
+  list.querySelectorAll(".opt").forEach(o=>o.onclick=()=>{
+    const c=S.conflicts[+o.dataset.i];c.pick=(c.pick===o.dataset.v)?"":o.dataset.v;
+    const rec=S.chargers.find(r=>r.Brand===c.Brand&&r.Model===c.Model);
+    if(rec&&c.pick){rec["MID Status"]=c.pick;rec["Review Needed"]="";rec.Conflict="";}
+    renderConflicts();renderTiles();renderDist();renderTable();});
+}
+$("#cfExport").onclick=()=>{
+  const rows=[["Brand","Model","Tracker says","Zite says","Decision"]].concat(
+    S.conflicts.map(c=>[c.Brand,c.Model,c["Tracker says"],c["Zite says"],c.pick||"UNRESOLVED"]));
+  dl("mid_conflict_decisions.csv",toCSV(rows),"text/csv;charset=utf-8");toast("Decisions exported");
+};
+
+/* ───── meters ───── */
+function renderMeters(){
+  const tb=$("#mtb");
+  if(!S.meters.length){tb.innerHTML=`<tr><td colspan="5"><div class="empty">${S.loaded?"No meter records.":"Load the register first."}</div></td></tr>`;return}
+  tb.innerHTML=S.meters.map(m=>`<tr><td><b>${esc(m.Brand)}</b></td><td>${esc(m.Model)}</td>
+    <td>${badge(m["MID Status"])}</td><td style="font-size:12px;color:var(--ink-2)">${esc(String(m.Source||"").slice(0,50))}</td>
+    <td style="font-size:12px;color:var(--ink-2)"><div class="clamp">${esc(m.Notes||"")}</div></td></tr>`).join("");
+}
+
+/* ───── manifest ───── */
+function manUrls(){return new Set(S.manifest.concat(S.staged).map(m=>String(m.Url||"").trim()).filter(Boolean))}
+function gaps(){const u=manUrls();
+  return S.chargers.filter(r=>r["Datasheet Link"]&&!u.has(String(r["Datasheet Link"]).trim()))}
+function folderFor(r){const t=String(r["Charge Type"]||"AC").toUpperCase().startsWith("D")?"DC":"AC";
+  return `Chargers\\${t} Chargers\\${r.Brand}`}
+function renderManifest(){
+  const g=gaps();
+  $("#mTot").textContent=S.manifest.length;$("#mGap").textContent=g.length;$("#mNew").textContent=S.staged.length;
+  $("#gapList").innerHTML=g.length?g.slice(0,60).map(r=>`
+    <div class="qrow"><div><div style="font-size:11.5px;color:var(--ink-2)">Brand</div><b>${esc(r.Brand)}</b></div>
+      <div><div style="font-size:11.5px;color:var(--ink-2)">Model</div>${esc(r.Model)}</div>
+      <div><div style="font-size:11.5px;color:var(--ink-2)">Type</div>${esc(r["Charge Type"]||"AC")}</div>
+      <div style="min-width:0"><div style="font-size:11.5px;color:var(--ink-2)">URL</div>
+        <div class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r["Datasheet Link"])}</div></div>
+      <button class="primary" data-q="${esc(r.ID)}" style="height:34px">Queue</button></div>`).join("")
+    +(g.length>60?`<div class="mono" style="color:var(--ink-3);font-size:12px">…and ${g.length-60} more. Use “Queue all gaps”.</div>`:"")
+    :`<div class="empty card">${S.loaded?"No gaps — every datasheet link is queued.":"Load the register first."}</div>`;
+  $("#gapList").querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>queue(b.dataset.q));
+  const q=($("#mq").value||"").toLowerCase();
+  const all=S.manifest.concat(S.staged).filter(m=>!q||Object.values(m).some(v=>String(v).toLowerCase().includes(q)));
+  $("#mtb2").innerHTML=all.length?all.slice(0,400).map((m,i)=>`<tr>
+      <td>${esc(m.Brand)}</td><td>${esc(m.Model)}</td><td class="mono" style="font-size:11.5px">${esc(m.SubFolder)}</td>
+      <td class="mono" style="font-size:11.5px">${esc(m.Filename)}</td>
+      <td class="mono" style="font-size:11.5px;max-width:280px"><div class="clamp">${esc(m.Url)}</div></td>
+      <td>${m.__new?'<span class="flag">new</span>':""}</td></tr>`).join("")
+    :`<tr><td colspan="6"><div class="empty">Nothing queued.</div></td></tr>`;
+}
+function queue(id){
+  const r=S.chargers.find(x=>x.ID===id);if(!r)return;
+  S.staged.push({Brand:r.Brand,Model:r.Model,SubFolder:folderFor(r),Url:r["Datasheet Link"],
+    Filename:`${slug(r.Brand)}_${slug(r.Model)}.pdf`,__new:true});
+  renderManifest();renderTiles();toast(`Queued ${r.Brand} ${r.Model}`);
+}
+$("#fixGaps").onclick=()=>{const g=gaps();if(!g.length)return toast("No gaps to queue.");
+  g.forEach(r=>S.staged.push({Brand:r.Brand,Model:r.Model,SubFolder:folderFor(r),Url:r["Datasheet Link"],
+    Filename:`${slug(r.Brand)}_${slug(r.Model)}.pdf`,__new:true}));
+  renderManifest();renderTiles();toast(`Queued ${g.length} rows`)};
+$("#mq").oninput=renderManifest;
+$("#expMan").onclick=()=>{
+  const all=S.manifest.concat(S.staged);
+  if(!all.length)return toast("Nothing to export.");
+  dl("manifest.csv",toCSV([["Brand","Model","SubFolder","Url","Filename"]].concat(
+    all.map(m=>[m.Brand,m.Model,m.SubFolder,m.Url,m.Filename]))),"text/csv;charset=utf-8");
+  toast("manifest.csv downloaded")};
+$("#copyMan").onclick=async()=>{if(!S.staged.length)return toast("Nothing new staged.");
+  try{await navigator.clipboard.writeText(S.staged.map(m=>[m.Brand,m.Model,m.SubFolder,m.Url,m.Filename].join("\t")).join("\n"));
+    toast("Copied as TSV")}catch{toast("Clipboard blocked — use the download button.")}};
+
+/* ───── intake ───── */
+const KINDS=[["datasheet","Datasheet / product sheet"],["photo","Nameplate photo"],
+             ["doc","Declaration of conformity / certificate"],["manual","Installation manual"],["other","Something else"]];
+function addIntake(files){
+  files.forEach(f=>{
+    const isImg=/^image\//.test(f.type);
+    S.intake.push({id:"i"+Math.random().toString(36).slice(2,9),name:f.name,size:f.size,
+      url:isImg?URL.createObjectURL(f):"",isImg,
+      kind:isImg?"photo":(/conform|doc|ce[-_]/i.test(f.name)?"doc":"datasheet"),
+      brand:"",model:"",notes:""});
+  });
+  renderIntake();renderTiles();toast(`${files.length} file${files.length===1?"":"s"} staged`);
+}
+$("#pick").onclick=()=>$("#fInt").click();
+$("#fInt").onchange=e=>{addIntake(Array.from(e.target.files));e.target.value=""};
+function driveFor(it){
+  if(it.kind==="photo")return `Technical/Evidence/Photos/${it.brand||"Unsorted"}`;
+  if(it.kind==="doc")return `Technical/Evidence/Conformity/${it.brand||"Unsorted"}`;
+  return `Technical/Chargers/AC Chargers/${it.brand||"Unsorted"}`;
+}
+function renderIntake(){
+  $("#cInt").textContent=S.intake.length;
+  $("#intakeEmpty").style.display=S.intake.length?"none":"";
+  $("#intakeList").innerHTML=S.intake.map((it,i)=>`
+    <div class="icard">
+      <div class="pv">${it.isImg?`<img src="${it.url}" data-z="${it.url}" alt="">`
+        :`<div class="fi"><div style="font-size:26px">▤</div>${esc(it.name.split(".").pop().toUpperCase())}<br>${(it.size/1024).toFixed(0)} KB</div>`}</div>
+      <div class="bd2">
+        <div style="display:flex;justify-content:space-between;gap:10px"><div class="mono" style="font-size:12px;word-break:break-all">${esc(it.name)}</div>
+          <button class="del" data-rm="${i}" style="height:28px;padding:3px 9px">✕</button></div>
+        <div class="grid3" style="margin-top:10px">
+          <div class="field"><label>What is it?</label><select data-i="${i}" data-k="kind">
+            ${KINDS.map(k=>`<option value="${k[0]}" ${it.kind===k[0]?"selected":""}>${k[1]}</option>`).join("")}</select></div>
+          <div class="field"><label>Brand</label><input data-i="${i}" data-k="brand" value="${esc(it.brand)}" list="brandList"></div>
+          <div class="field"><label>Model</label><input data-i="${i}" data-k="model" value="${esc(it.model)}"></div>
+        </div>
+        <div class="field" style="margin-top:9px"><label>Anything Claude should know</label>
+          <input data-i="${i}" data-k="notes" value="${esc(it.notes)}" placeholder="e.g. supplier says MID is optional on this SKU"></div>
+        <div class="mono" style="margin-top:9px;font-size:11.5px;color:var(--ink-3)">→ ${esc(driveFor(it))}/${esc(it.name)}</div>
+      </div></div>`).join("");
+  const w=$("#intakeList");
+  w.querySelectorAll("input,select").forEach(el=>el.oninput=el.onchange=()=>{
+    S.intake[+el.dataset.i][el.dataset.k]=el.value;renderIntake()});
+  w.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{
+    const it=S.intake[+b.dataset.rm];if(it.url)URL.revokeObjectURL(it.url);
+    S.intake.splice(+b.dataset.rm,1);renderIntake();renderTiles()});
+  w.querySelectorAll("[data-z]").forEach(img=>img.onclick=()=>{$("#lbi").src=img.dataset.z;$("#lb").classList.add("on")});
+  if(S.intake.length) w.insertAdjacentHTML("beforeend",`
+    <div class="acts"><button class="primary" id="genBatch">Generate processing batch</button>
+      <button class="ghost" id="clrBatch">Clear all</button></div>
+    <textarea class="out" id="batchOut" style="display:none;margin-top:11px" readonly></textarea>`);
+  const gb=$("#genBatch"); if(gb) gb.onclick=async()=>{
+    const t=batchText();const ta=$("#batchOut");ta.value=t;ta.style.display="";
+    try{await navigator.clipboard.writeText(t);toast("Copied — paste to Claude and attach the files")}
+    catch{ta.select();toast("Select and copy this, then attach the files")}};
+  const cb=$("#clrBatch"); if(cb) cb.onclick=()=>{S.intake.forEach(i=>i.url&&URL.revokeObjectURL(i.url));
+    S.intake=[];renderIntake();renderTiles()};
+  $("#brandListHost").innerHTML=`<datalist id="brandList">${
+    [...new Set(S.chargers.map(r=>r.Brand))].sort().map(b=>`<option value="${esc(b)}">`).join("")}</datalist>`;
+}
+function batchText(){
+  const L=S.intake.map((it,n)=>`  ${n+1}. ${it.name}
+     type: ${(KINDS.find(k=>k[0]===it.kind)||[])[1]}
+     brand/model as supplied: ${it.brand||"(unknown)"} / ${it.model||"(unknown)"}
+     file to: ${driveFor(it)}/${it.name}${it.notes?`\n     note: ${it.notes}`:""}`).join("\n");
+  return `MID REGISTER INTAKE — ${S.intake.length} file(s) attached
+
+${L}
+
+For each file, please:
+1. Read it and extract what is actually there — brand, model, variant/article number, and for meters the
+   make, model, accuracy class (EN 50470-3), notified body number and M-marking year. Treat my brand/model
+   tagging above as a hint, not as input; correct it where the document disagrees.
+2. Quote the exact sentence that establishes MID status. Not a paraphrase — the wording, so the claim is
+   traceable later. If the document never mentions MID, say so explicitly rather than inferring from a CE mark.
+3. For a declaration of conformity: give the certificate number, the issuing notified body, the directive
+   cited, and exactly which models it covers. A DoC that does not cite 2014/32/EU is not MID evidence.
+4. Assign a status from the register's vocabulary: Integrated / Optional / External / None / Unknown.
+   Do not use None unless a source positively rules MID out — absence of evidence is Unknown.
+5. Return the register rows to add or update (ID where it already exists), plus any manifest rows, plus any
+   new Meter records. Flag any row where the new evidence contradicts what the register currently says.
+6. File each document to the Drive path listed above and tell me where it went.`;
+}
+$("#lb").onclick=()=>$("#lb").classList.remove("on");
+
+function renderAll(){renderTiles();renderDist();renderTable();renderConflicts();renderMeters();renderManifest();renderIntake()}
+document.body.insertAdjacentHTML("beforeend",'<span id="brandListHost"></span>');
+renderAll();
+</script>
+</body>
+</html>
