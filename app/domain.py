@@ -24,15 +24,22 @@ Row = dict[str, Any]
 _ID_RE = re.compile(r"^([a-z]{3})_(\d+)$")
 
 
-def next_id(rows: Iterable[Row], prefix: str) -> str:
+def next_id(rows: Iterable[Row], prefix: str, *, issued: Iterable[str] = ()) -> str:
     """Allocate the next free ``<prefix>_NNNN``.
 
-    IDs are stable and never reused: we take max+1 rather than count+1, so
-    deleting a row does not hand its ID to a different piece of hardware.
+    IDs are stable and never reused. max+1 over the live rows is not enough on
+    its own: delete the highest-numbered row and its ID becomes free again, so
+    the next charger added would inherit the identity of the deleted one.
+
+    ``issued`` carries every ID ever seen — in practice the Row ID column of the
+    append-only Change Log, which retains deleted rows' IDs forever. The high
+    water mark is taken across both.
     """
     highest = 0
-    for row in rows:
-        match = _ID_RE.match(str(row.get("ID", "")).strip())
+    candidates = [str(row.get("ID", "")).strip() for row in rows]
+    candidates += [str(value).strip() for value in issued]
+    for candidate in candidates:
+        match = _ID_RE.match(candidate)
         if match and match.group(1) == prefix:
             highest = max(highest, int(match.group(2)))
     return f"{prefix}_{highest + 1:04d}"
@@ -133,6 +140,12 @@ def append_note(existing: Any, addition: str) -> str:
 
     Notes carry quoted source language. Losing an earlier quote to make room for
     a newer one destroys the evidence trail, so edits always accumulate.
+
+    The duplicate check compares whole paragraphs, not substrings. A substring
+    test silently swallows a short note that happens to occur inside existing
+    text — appending "one" to a note containing "...in one document..." would
+    drop it — and silently discarding someone's evidence is worse than storing
+    it twice.
     """
     current = str(existing or "").strip()
     addition = addition.strip()
@@ -140,6 +153,7 @@ def append_note(existing: Any, addition: str) -> str:
         return current
     if not current:
         return addition
-    if addition in current:
+    paragraphs = [block.strip() for block in current.split("\n\n")]
+    if addition in paragraphs:
         return current
     return f"{current}\n\n{addition}"

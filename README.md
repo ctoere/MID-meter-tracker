@@ -79,6 +79,20 @@ against a primary source and clears the flag.
 217 of 384 rows are ERE-eligible in some form. `Optional` and `External` are not
 rejections — see CLAUDE.md before writing anything that groups them with `None`.
 
+## Editing
+
+Any row can be edited from the detail drawer, and new charger and meter rows added.
+Every change appends to the **Change Log** — timestamp, OS username, row ID, field, old
+value, new value, and reason. The log is append-only; nothing rewrites it.
+
+Two rules are enforced in the API rather than the UI, so they hold however the row is
+reached:
+
+- **Changing a MID status requires a source or a note.** An unexplained status change is
+  what an NEa audit would query. The request is refused with a 422.
+- **Notes are appended, never overwritten.** They carry quoted source language, so the
+  drawer shows existing notes read-only and offers a separate "append a note" box.
+
 ## Safety properties
 
 - **Never writes in place.** Every save backs up first, writes to a temp file, then
@@ -94,9 +108,11 @@ rejections — see CLAUDE.md before writing anything that groups them with `None
 python -m pytest tests/ -q
 ```
 
-Covers the storage round trip and atomicity, backup rotation, gap detection against the
-three real known gaps, the seed-vocabulary mapping including its negation and
-CE/Eichrecht traps, and the status vocabulary.
+85 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
+including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
+rules above — that a status change without a reason is refused, that the change log is
+append-only, that notes survive an edit, and that a deleted row's ID is never reissued.
 
 ## Migration note
 

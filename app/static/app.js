@@ -161,45 +161,197 @@ function link(v){ return v
   : '<span style="color:var(--ink-3)">—</span>'; }
 function kv(k,v){ return `<div class="kv"><dt>${k}</dt><dd>${v}</dd></div>`; }
 
+function statusSelect(cur){
+  return `<select data-f="MID Status">${STATUSES.map(v =>
+    `<option value="${v}" ${cur===v?"selected":""}>${v} — ${ELIGIBLE[v]}</option>`).join("")}</select>`;
+}
+function field(label, name, value, opts){
+  const o = opts||{};
+  return `<div class="field"><label>${label}</label>${
+    o.select ? o.select
+    : `<input data-f="${esc(name)}" value="${esc(value||"")}" ${o.list?`list="${o.list}"`:""}>`}</div>`;
+}
+
 function openCharger(id){
   const r = S.chargers.find(x => x.ID === id); if(!r) return;
+  S.editing = {kind:"charger", id};
   $("#drT").textContent = `${r.Brand} — ${r.Model}`;
   $("#drS").innerHTML = `${esc(r.ID)} · ${esc(r["Charge Type"]||"")} ${badge(r["MID Status"])}`;
+
   $("#drB").innerHTML =
     `<div class="note" style="margin-top:0"><b>${esc(r["MID Status"])}</b> — ${ELIGIBLE[r["MID Status"]]||""}</div>` +
     (needsReview(r) ? `<div class="note warn"><b>Review needed.</b> ${esc(r["Review Needed"])}</div>` : "") +
     (r.Conflict ? `<div class="note crit"><b>Sources disagreed.</b> ${esc(r.Conflict)}</div>` : "") +
-    kv("Meter", [r["Meter Brand"], r["Meter Model"]].filter(Boolean).join(" ") ||
-       '<span style="color:var(--ink-3)">not disclosed</span>') +
-    kv("Max kW", esc(r["Max kW"]||"—")) +
-    kv("Research status", esc(r["Research Status"]||"—")) +
-    kv("Datasheet", link(r["Datasheet Link"])) +
-    kv("Certificate", link(r["Certificate Link"])) +
-    kv("Drive folder", `<span class="mono">${esc(r["Drive Folder"]||"—")}</span>`) +
-    kv("Source", esc(r.Source||"—")) +
-    kv("Present in", `${r["In Tracker"]?"tracker":""}${r["In Tracker"]&&r["In Zite"]?" + ":""}${r["In Zite"]?"Zite":""}` || "—") +
+    `<div id="drErr"></div>` +
+    `<div class="sechead"><h2>MID status</h2><div class="ln"></div></div>` +
+    field("MID status", "MID Status", r["MID Status"], {select: statusSelect(r["MID Status"])}) +
+    `<div class="field"><label>Why — source or note <b>(required to change the status)</b></label>
+       <input id="drReason" placeholder="e.g. datasheet rev 1.1 p.4, 'MID-certified meter fitted as standard'"></div>` +
+    `<div class="sechead"><h2>Record</h2><div class="ln"></div></div>` +
+    `<div class="grid2">` +
+      field("Brand","Brand",r.Brand,{list:"brandList"}) + field("Model","Model",r.Model) +
+      field("Charge type","Charge Type",r["Charge Type"]) + field("Max kW","Max kW",r["Max kW"]) +
+      field("Meter brand","Meter Brand",r["Meter Brand"]) + field("Meter model","Meter Model",r["Meter Model"]) +
+    `</div>` +
+    field("Datasheet link","Datasheet Link",r["Datasheet Link"]) +
+    field("Certificate link","Certificate Link",r["Certificate Link"]) +
+    field("Drive folder","Drive Folder",r["Drive Folder"]) +
+    `<div class="grid2">` +
+      field("Research status","Research Status",r["Research Status"]) +
+      field("Source","Source",r.Source) +
+    `</div>` +
+    field("Review needed — clear this only when the row is safe to quote","Review Needed",r["Review Needed"]) +
+    `<div class="sechead"><h2>Notes</h2><div class="ln"></div></div>` +
+    `<div class="note" style="font-size:12.5px">Notes carry quoted source language, so they are
+       appended to, never overwritten. Existing text stays as it is.</div>` +
     kv("Notes (EN)", esc(r["Notes (EN)"]||"—")) +
-    (r["Notes (NL)"] ? kv("Notes (NL)", esc(r["Notes (NL)"])) : "");
-  $("#drF").style.display = "none";
+    (r["Notes (NL)"] ? kv("Notes (NL)", esc(r["Notes (NL)"])) : "") +
+    `<div class="field"><label>Append a note (EN)</label><textarea id="drNote" rows="3"
+       placeholder="Quote the source wording rather than paraphrasing it."></textarea></div>` +
+    `<div class="field"><label>Append a note (NL)</label><textarea id="drNoteNl" rows="2"></textarea></div>` +
+    `<div class="sechead"><h2>History</h2><div class="ln"></div></div><div id="drHist" class="mono"
+       style="font-size:12px;color:var(--ink-3)">loading…</div>`;
+
+  $("#drF").style.display = "";
+  $("#drF").innerHTML =
+    `<button class="primary" id="drSave">Save changes</button>
+     <button class="ghost" id="drCancel">Cancel</button>
+     <span class="reqnote">Every change is written to the workbook and the Change Log.</span>`;
+  $("#drSave").onclick = saveDrawer;
+  $("#drCancel").onclick = closeDrawer;
+  loadHistory(id);
   openDrawer();
+}
+
+async function loadHistory(id){
+  const box = $("#drHist"); if(!box) return;
+  try{
+    const d = await api(`/api/history/${encodeURIComponent(id)}`);
+    box.innerHTML = d.entries.length
+      ? d.entries.map(e => `<div class="chg"><span class="t">${esc(e.Timestamp)} · ${esc(e.User)}</span><br>
+          <b>${esc(e.Field)}</b>: ${e["Old Value"]?`<span class="was">${esc(e["Old Value"])}</span> → `:""}${esc(e["New Value"])}
+          ${e.Reason?`<br><span style="color:var(--ink-2)">${esc(e.Reason)}</span>`:""}</div>`).join("")
+      : "No changes recorded yet.";
+  }catch(e){ box.textContent = "Could not load history: "+e.message; }
+}
+
+async function saveDrawer(){
+  const {kind, id} = S.editing || {};
+  if(!id) return;
+  const fields = {};
+  $$("#drB [data-f]").forEach(el => { fields[el.dataset.f] = el.value; });
+  const payload = {
+    fields,
+    reason: ($("#drReason")||{}).value || "",
+    appendNote: ($("#drNote")||{}).value || "",
+    appendNoteNl: ($("#drNoteNl")||{}).value || "",
+  };
+  const err = $("#drErr"); if(err) err.innerHTML = "";
+  $("#dr").classList.add("saving");
+  try{
+    const path = kind === "meter" ? `/api/meters/${id}` : `/api/chargers/${id}`;
+    const d = await api(path, {method:"PATCH", headers:{"Content-Type":"application/json"},
+                              body: JSON.stringify(payload)});
+    if(!d.changes.length){ toast("Nothing changed."); $("#dr").classList.remove("saving"); return; }
+    const list = kind === "meter" ? S.meters : S.chargers;
+    const i = list.findIndex(x => x.ID === id);
+    if(i >= 0) list[i] = d.row;
+    if(d.stats) S.stats = d.stats;
+    renderAll();
+    toast(`Saved — ${d.changes.length} change${d.changes.length===1?"":"s"} logged`);
+    closeDrawer();
+  }catch(e){
+    if(err) err.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    else toast(e.message);
+  }finally{ $("#dr").classList.remove("saving"); }
 }
 
 function openMeter(id){
   const r = S.meters.find(x => x.ID === id); if(!r) return;
+  S.editing = {kind:"meter", id};
   $("#drT").textContent = `${r.Brand} — ${r.Model}`;
   $("#drS").innerHTML = `${esc(r.ID)} ${badge(r["MID Status"])}`;
   $("#drB").innerHTML =
     `<div class="note" style="margin-top:0"><b>${esc(r["MID Status"])}</b> — ${ELIGIBLE[r["MID Status"]]||""}</div>` +
     (needsReview(r) ? `<div class="note warn"><b>Review needed.</b> ${esc(r["Review Needed"])}</div>` : "") +
-    kv("Datasheet", link(r["Datasheet Link"])) +
-    kv("Certificate", link(r["Certificate Link"])) +
-    kv("Drive folder", `<span class="mono">${esc(r["Drive Folder"]||"—")}</span>`) +
-    kv("Research status", esc(r["Research Status"]||"—")) +
-    kv("Source", esc(r.Source||"—")) +
-    kv("Notes", esc(r.Notes||"—"));
-  $("#drF").style.display = "none";
+    `<div id="drErr"></div>` +
+    field("MID status","MID Status",r["MID Status"],{select: statusSelect(r["MID Status"])}) +
+    `<div class="field"><label>Why — source or note <b>(required to change the status)</b></label>
+       <input id="drReason" placeholder="e.g. NMi certificate T10402, MI-003"></div>` +
+    `<div class="grid2">` + field("Brand","Brand",r.Brand) + field("Model","Model",r.Model) + `</div>` +
+    field("Datasheet link","Datasheet Link",r["Datasheet Link"]) +
+    field("Certificate link","Certificate Link",r["Certificate Link"]) +
+    field("Drive folder","Drive Folder",r["Drive Folder"]) +
+    `<div class="grid2">` + field("Research status","Research Status",r["Research Status"]) +
+      field("Source","Source",r.Source) + `</div>` +
+    field("Review needed","Review Needed",r["Review Needed"]) +
+    kv("Notes", esc(r.Notes||"—")) +
+    `<div class="field"><label>Append a note</label><textarea id="drNote" rows="3"></textarea></div>` +
+    `<div class="sechead"><h2>History</h2><div class="ln"></div></div><div id="drHist" class="mono"
+       style="font-size:12px;color:var(--ink-3)">loading…</div>`;
+  $("#drF").style.display = "";
+  $("#drF").innerHTML =
+    `<button class="primary" id="drSave">Save changes</button>
+     <button class="ghost" id="drCancel">Cancel</button>
+     <span class="reqnote">The meter is what carries certification, not the charger.</span>`;
+  $("#drSave").onclick = saveDrawer;
+  $("#drCancel").onclick = closeDrawer;
+  loadHistory(id);
   openDrawer();
 }
+
+/* ───── new rows ───── */
+function openNew(kind){
+  S.editing = {kind, id:null};
+  const isMeter = kind === "meter";
+  $("#drT").textContent = isMeter ? "New meter" : "New charger";
+  $("#drS").textContent = isMeter ? "mtr_…" : "chg_…";
+  $("#drB").innerHTML =
+    `<div class="note" style="margin-top:0">A new row starts as <b>Unknown</b> and is flagged for review.
+      Absence of evidence is Unknown — never None.</div>` +
+    `<div id="drErr"></div>` +
+    `<div class="grid2">` +
+      field("Brand *","Brand","",{list:"brandList"}) + field("Model *","Model","") + `</div>` +
+    (isMeter ? "" : `<div class="grid2">` + field("Charge type","Charge Type","AC") +
+                    field("Max kW","Max kW","") + `</div>`) +
+    field("MID status","MID Status","Unknown",{select: statusSelect("Unknown")}) +
+    `<div class="field"><label>Why — source or note</label>
+       <input id="drReason" placeholder="Where does this come from?"></div>` +
+    (isMeter ? "" : `<div class="grid2">` + field("Meter brand","Meter Brand","") +
+                    field("Meter model","Meter Model","") + `</div>`) +
+    field("Datasheet link","Datasheet Link","") +
+    field("Certificate link","Certificate Link","") +
+    field("Source","Source","") +
+    `<div class="field"><label>Notes</label><textarea id="drNote" rows="3"
+       placeholder="If this brand resells another manufacturer's hardware, note the relationship rather than duplicating their rows."></textarea></div>`;
+  $("#drF").style.display = "";
+  $("#drF").innerHTML = `<button class="primary" id="drSave">Create</button>
+     <button class="ghost" id="drCancel">Cancel</button>`;
+  $("#drSave").onclick = createRow;
+  $("#drCancel").onclick = closeDrawer;
+  openDrawer();
+}
+
+async function createRow(){
+  const {kind} = S.editing;
+  const fields = {};
+  $$("#drB [data-f]").forEach(el => { fields[el.dataset.f] = el.value; });
+  const payload = {fields, reason: ($("#drReason")||{}).value || "",
+                   appendNote: ($("#drNote")||{}).value || ""};
+  const err = $("#drErr"); err.innerHTML = "";
+  $("#dr").classList.add("saving");
+  try{
+    const d = await api(kind === "meter" ? "/api/meters" : "/api/chargers",
+      {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+    (kind === "meter" ? S.meters : S.chargers).push(d.row);
+    if(d.stats) S.stats = d.stats;
+    renderAll(); closeDrawer();
+    toast(`Created ${d.row.ID}`);
+  }catch(e){ err.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  finally{ $("#dr").classList.remove("saving"); }
+}
+$("#addChargerBtn").onclick = () => openNew("charger");
+$("#addMeterBtn").onclick = () => openNew("meter");
 
 /* ───── filters ───── */
 $("#q").oninput = e => { S.f.q = e.target.value; renderTable(); };
