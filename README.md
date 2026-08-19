@@ -9,6 +9,27 @@ app is a local web UI over it, plus a datasheet downloader and a document intake
 
 ## Setup
 
+### Windows
+
+Download the repo, then **double-click `run.cmd`**. It builds the environment on first
+run and starts the app; after that it just starts it. Nothing to type.
+
+From PowerShell it is the same file:
+
+```powershell
+cd $HOME\Documents
+git clone https://github.com/ctoere/MID-meter-tracker.git
+cd MID-meter-tracker
+.\run.cmd
+```
+
+Put the folder somewhere you own — `Documents` is fine. `C:\Windows\System32` and
+`Program Files` are write-protected, and every command will fail with a permission error
+if you are sitting in one of them (which is where PowerShell starts if you opened it as
+Administrator — you do not need Administrator for any of this).
+
+### macOS and Linux
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
