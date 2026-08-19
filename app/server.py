@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (changelog, conflicts as conflicts_mod, conformity as conformity_mod,
-               domain, downloader, manifest as manifest_mod, schema, storage)
+               domain, downloader, drivecheck, manifest as manifest_mod, schema, storage)
 from .intake import extract as extract_mod, filing, proposals
 from .config import get_config
 
@@ -82,6 +82,7 @@ def get_register() -> dict:
             "path": str(reg.path),
             "user": domain.current_user(),
             "driveRoot": str(get_config().drive_root),
+            "drive": drivecheck.check().as_dict(),
             "chargerColumns": list(schema.CHARGER_COLUMNS),
             "meterColumns": list(schema.METER_COLUMNS),
         },
@@ -641,3 +642,9 @@ def get_conformity_export() -> dict:
     """The conformity register as rows, for export."""
     reg = register()
     return {"columns": list(schema.CONFORMITY_COLUMNS), "rows": reg.conformity}
+
+
+@app.get("/api/drive")
+def get_drive_status() -> dict:
+    """Where documents are being filed, and whether that is really Drive."""
+    return drivecheck.check().as_dict()

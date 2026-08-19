@@ -165,3 +165,8 @@ ul.tight{margin:7px 0;padding-left:20px}ul.tight li{margin-bottom:4px}
 .chg b{font-weight:600}
 .chg .t{color:var(--ink-3);font-family:ui-monospace,Menlo,monospace;font-size:11px}
 .was{text-decoration:line-through;color:var(--ink-3)}
+
+.pill.warn i{background:var(--warning)}
+.pill.bad i{background:var(--critical)}
+.pill .p{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+#driveWarn:not(:empty){margin-top:16px}

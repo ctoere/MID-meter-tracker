@@ -50,7 +50,15 @@ works and says so rather than failing.
 root = "/Users/you/Library/CloudStorage/GoogleDrive-you@zeres.nl/My Drive"
 ```
 
-`ZERES_REGISTER_PATH` and `ZERES_DRIVE_ROOT` override it per machine. Secrets, if any are
+Point `root` at the folder that **contains** `Technical` — the app appends `Technical`
+itself. A tree at `…\Operations bedrijven\Technical\Technical\Chargers` means
+`root = '…\Operations bedrijven\Technical'`; going one level deeper creates a third
+`Technical` nobody looks in. On Windows use **single quotes**: TOML treats `\` as an escape,
+so `"G:\Shared drives\..."` fails while `'G:\Shared drives\...'` works.
+
+The app checks this at startup and shows the live path in the header — a wrong folder is
+reported immediately rather than after twenty filed documents. `ZERES_REGISTER_PATH` and
+`ZERES_DRIVE_ROOT` override the config per machine. Secrets, if any are
 ever needed, go in `.env` — see `.env.example`. None are required today.
 
 ## Layout
@@ -251,7 +259,7 @@ same classification. Tesseract is deliberately not installed on the runner: the 
 to degrade with a clear message rather than crash when OCR is unavailable, and a runner
 without it is the honest test of that.
 
-189 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+197 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is

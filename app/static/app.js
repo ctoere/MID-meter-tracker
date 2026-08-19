@@ -46,6 +46,7 @@ async function loadAll(){
                       conflictStats:d.conflictStats, conformity:d.conformity,
                       conformityStats:d.conformityStats});
     loadConformity();
+    renderDrive(d.meta.drive);
     const p=$("#state"); p.classList.add("live");
     p.lastElementChild.textContent = d.meta.path.split(/[\\/]/).pop();
     p.title = d.meta.path;
@@ -58,6 +59,35 @@ async function loadAll(){
 $("#reloadBtn").onclick = async () => {
   await api("/api/reload",{method:"POST"}); await loadAll(); toast("Reloaded from disk");
 };
+$("#drivePill").onclick = async () => {
+  try{ renderDrive(await api("/api/drive")); toast(S.drive.headline); }catch(e){ toast(e.message); }
+};
+
+/* ───── where documents are filed ─────
+   The app writes to a folder and Google Drive for desktop syncs it, so pointing
+   it at the wrong folder looks exactly like working. Say so, permanently. */
+function renderDrive(drive){
+  if(!drive) return;
+  S.drive = drive;
+  const pill = $("#drivePill");
+  pill.classList.toggle("live", drive.level === "ok");
+  pill.classList.toggle("warn", drive.level === "warning");
+  pill.classList.toggle("bad",  drive.level === "error");
+  pill.lastElementChild.className = "p";
+  pill.lastElementChild.textContent = drive.technical || drive.root || "not configured";
+  pill.title = `${drive.headline}\n${drive.details.join("\n")}${drive.fix?"\n\nFix: "+drive.fix:""}`;
+
+  $("#driveWarn").innerHTML = drive.level === "ok" ? "" : `
+    <div class="note ${drive.level === "error" ? "crit" : "warn"}">
+      <b>${esc(drive.headline)}</b>
+      ${drive.details.map(d => `<div style="margin-top:5px">${esc(d)}</div>`).join("")}
+      ${drive.fix ? `<div style="margin-top:7px"><b>Fix:</b> <span class="mono">${esc(drive.fix)}</span></div>` : ""}
+      <div style="margin-top:7px;font-size:12px;color:var(--ink-2)">
+        Edit <code class="k">config.toml</code> and restart the app.
+        Use single quotes around a Windows path: <code class="k">root = 'G:\\Shared drives\\...'</code>
+      </div>
+    </div>`;
+}
 
 /* ───── chrome ───── */
 $("#themeBtn").onclick = function(){
