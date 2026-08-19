@@ -52,6 +52,7 @@ class Register:
     conflicts: list[Row] = field(default_factory=list)
     manifest: list[Row] = field(default_factory=list)
     change_log: list[Row] = field(default_factory=list)
+    conformity: list[Row] = field(default_factory=list)
 
     path: Path | None = None
     #: mtime at load, used to detect an edit made in Excel behind our back
@@ -64,6 +65,7 @@ class Register:
             schema.SHEET_CONFLICTS: self.conflicts,
             schema.SHEET_MANIFEST: self.manifest,
             schema.SHEET_CHANGE_LOG: self.change_log,
+            schema.SHEET_CONFORMITY: self.conformity,
         }[name]
 
     def charger(self, row_id: str) -> Row | None:
@@ -177,6 +179,7 @@ def load(path: str | Path | None = None) -> Register:
         conflicts=_read_sheet(wb, schema.SHEET_CONFLICTS, schema.CONFLICT_COLUMNS),
         manifest=_read_sheet(wb, schema.SHEET_MANIFEST, schema.MANIFEST_COLUMNS),
         change_log=_read_sheet(wb, schema.SHEET_CHANGE_LOG, schema.CHANGE_LOG_COLUMNS),
+        conformity=_read_sheet(wb, schema.SHEET_CONFORMITY, schema.CONFORMITY_COLUMNS),
         path=target,
         loaded_mtime=target.stat().st_mtime,
     )

@@ -167,6 +167,28 @@ Two hard-won details in there, both with regression tests:
   "No built-in MID; external accessory option" is External, while "No MID in any variant"
   is a rejection
 
+## Conformity
+
+`app/conformity.py`. A declaration of conformity is issued **per brand or product family,
+not per model**, so the backlog is organised by brand and one document fans out across
+every row it covers. That fan-out is the feature; the searching in front of it is manual
+because no EU registry of declarations exists.
+
+Matching a declaration to rows is deliberately asymmetric, and the asymmetry is the whole
+safety property:
+
+- declaration names `Eve Mini`, row reads `Eve Mini (ICU)` → **likely**, the document's
+  name is the broader one
+- declaration names `Pulsar Plus`, row reads `Pulsar` → **check only**, never confident:
+  the document names a *more specific* product and the row may be different hardware
+
+Attaching a certificate to a model it does not cover manufactures evidence, which is worse
+than leaving a row unlinked for someone to do by hand. Model tokens shorter than four
+normalised characters never match, or `Pro` would attach a certificate to half a range.
+
+A declaration that does not cite 2014/32/EU is filed and listed, but never written onto a
+row. `Directive Cited` empty means *not MID evidence*.
+
 ## UI
 
 `app/static/` is the prototype (`data/source/zeres_register_console_prototype.html`) split

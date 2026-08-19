@@ -17,8 +17,8 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (changelog, conflicts as conflicts_mod, domain, downloader,
-               manifest as manifest_mod, schema, storage)
+from . import (changelog, conflicts as conflicts_mod, conformity as conformity_mod,
+               domain, downloader, manifest as manifest_mod, schema, storage)
 from .intake import extract as extract_mod, filing, proposals
 from .config import get_config
 
@@ -70,6 +70,8 @@ def get_register() -> dict:
             for g in gaps
         ],
         "stats": domain.summarise(reg.chargers),
+        "conformity": reg.conformity,
+        "conformityStats": conformity_mod.summarise(reg.chargers, reg.conformity),
         "vocabulary": {
             "statuses": list(schema.MID_STATUSES),
             "eligibility": schema.ELIGIBILITY_TEXT,
@@ -527,3 +529,115 @@ def post_intake_reread(item_id: str, payload: dict = Body(default={})) -> dict:
                           "warnings": extraction.warnings}
     item["proposal"] = proposal.as_dict()
     return item
+
+
+# ---------------------------------------------------------------------------
+# conformity — hunting declarations, and fanning one out across the rows it covers
+# ---------------------------------------------------------------------------
+
+#: Brand -> domain, once a human has confirmed where a manufacturer publishes.
+#: Kept in config rather than the workbook: it is a research aid, not a
+#: compliance record, and it should not clutter the register.
+_domain_overrides: dict[str, str] = {}
+
+
+@app.get("/api/conformity/backlog")
+def get_conformity_backlog() -> dict:
+    """Eligible rows with no certificate, grouped by brand — busiest brand first."""
+    reg = register()
+    held_brands = {str(c.get("Brand", "")).strip() for c in reg.conformity
+                   if str(c.get("Directive Cited", "")).strip()}
+    return {
+        "stats": conformity_mod.summarise(reg.chargers, reg.conformity),
+        "targets": [
+            {
+                "brand": t.brand,
+                "count": t.count,
+                "domain": t.domain,
+                "domainIsGuess": t.domain_is_guess,
+                "models": t.models,
+                "rows": [{"id": r.get("ID"), "model": r.get("Model"),
+                          "status": r.get("MID Status")} for r in t.rows],
+                "haveDocForBrand": t.brand in held_brands,
+                "searches": conformity_mod.search_links(t.brand, t.domain, t.models),
+            }
+            for t in conformity_mod.targets(reg.chargers, _domain_overrides)
+        ],
+    }
+
+
+@app.post("/api/conformity/domain")
+def post_conformity_domain(payload: dict = Body(...)) -> dict:
+    """Record where a brand actually publishes its declarations, so it is found once."""
+    brand = str(payload.get("brand") or "").strip()
+    site = str(payload.get("domain") or "").strip()
+    site = site.replace("https://", "").replace("http://", "").strip("/").removeprefix("www.")
+    if not brand:
+        raise HTTPException(status_code=422, detail="Brand is required.")
+    if site:
+        _domain_overrides[brand] = site
+    else:
+        _domain_overrides.pop(brand, None)
+    return {"ok": True, "brand": brand, "domain": site}
+
+
+@app.post("/api/conformity/match")
+def post_conformity_match(payload: dict = Body(...)) -> dict:
+    """Which register rows a declaration appears to cover. Proposes only."""
+    reg = register()
+    return {"matches": conformity_mod.match_rows(
+        reg.chargers, str(payload.get("brand") or ""), payload.get("modelsCovered") or "")}
+
+
+@app.post("/api/conformity")
+def post_conformity_record(payload: dict = Body(...)) -> dict:
+    """Record a declaration and link it to the rows a human selected.
+
+    The certificate is written onto each chosen row, and every one of those is a
+    change to a compliance record, so each is logged with the certificate number
+    as its reason.
+    """
+    reg = register()
+    brand = str(payload.get("brand") or "").strip()
+    doc = payload.get("doc") or {}
+    if not brand:
+        raise HTTPException(status_code=422, detail="Brand is required.")
+
+    record = conformity_mod.new_record(
+        reg, brand, doc, payload.get("stored"), str(payload.get("link") or ""))
+    reg.conformity.append(record)
+
+    directive_ok = bool(record["Directive Cited"])
+    link = str(payload.get("link") or "") or record["Drive File"]
+    linked: list[str] = []
+
+    # A declaration that does not cite 2014/32/EU is filed, but never attached to
+    # a row as if it supported the eligibility claim.
+    if directive_ok:
+        for row_id in payload.get("applyTo") or []:
+            row = reg.charger(row_id)
+            if row is None:
+                continue
+            reason = (f"Declaration of conformity {record['Certificate Number'] or record['ID']}"
+                      f"{' issued by ' + record['Issuing Body'] if record['Issuing Body'] else ''}, "
+                      f"citing 2014/32/EU, covering: {record['Models Covered'] or brand}")
+            changes = changelog.diff(row, {**row, "Certificate Link": link}, ["Certificate Link"])
+            if changes:
+                changelog.record(reg.change_log, row_id, changes, reason)
+                row["Certificate Link"] = link
+                row["Notes (EN)"] = domain.append_note(row.get("Notes (EN)"), f"[{record['ID']}] {reason}")
+                linked.append(row_id)
+
+    _persist(reg)
+    return {"ok": True, "record": record, "linked": linked,
+            "directiveCited": directive_ok,
+            "conformity": reg.conformity,
+            "conformityStats": conformity_mod.summarise(reg.chargers, reg.conformity),
+            "stats": domain.summarise(reg.chargers)}
+
+
+@app.get("/api/conformity/export")
+def get_conformity_export() -> dict:
+    """The conformity register as rows, for export."""
+    reg = register()
+    return {"columns": list(schema.CONFORMITY_COLUMNS), "rows": reg.conformity}

@@ -36,13 +36,16 @@ def test_round_trip_preserves_the_real_row_counts(sandbox):
 def test_column_order_is_stable(sandbox):
     def header(path, sheet):
         wb = openpyxl.load_workbook(path)
-        row = [c.value for c in wb[sheet][1]]
+        row = [c.value for c in wb[sheet][1]] if sheet in wb.sheetnames else None
         wb.close()
         return row
 
-    before = {name: header(sandbox, name) for name in schema.MANAGED_SHEETS}
+    # A workbook predating a newly added sheet simply has no header for it yet;
+    # save() creates it. Only sheets that already exist can be compared.
+    before = {name: header(sandbox, name) for name in schema.MANAGED_SHEETS
+              if header(sandbox, name) is not None}
     storage.save(storage.load())
-    after = {name: header(sandbox, name) for name in schema.MANAGED_SHEETS}
+    after = {name: header(sandbox, name) for name in before}
 
     assert after == before
     assert before[schema.SHEET_CHARGERS] == list(schema.CHARGER_COLUMNS)
@@ -135,3 +138,21 @@ def test_refuses_to_clobber_an_edit_made_behind_our_back(sandbox):
     with pytest.raises(storage.StaleRegisterError):
         storage.save(register)
     storage.save(register, force=True)  # explicit override still works
+
+
+def test_a_sheet_added_after_the_workbook_was_created_is_written_on_save(sandbox):
+    """Upgrading an older register must not need a migration step."""
+    wb = openpyxl.load_workbook(sandbox)
+    if schema.SHEET_CONFORMITY in wb.sheetnames:
+        del wb[schema.SHEET_CONFORMITY]
+        wb.save(sandbox)
+    wb.close()
+
+    register = storage.load()          # missing sheet reads as empty, not an error
+    assert register.conformity == []
+    storage.save(register)
+
+    wb = openpyxl.load_workbook(sandbox)
+    assert schema.SHEET_CONFORMITY in wb.sheetnames
+    assert [c.value for c in wb[schema.SHEET_CONFORMITY][1]] == list(schema.CONFORMITY_COLUMNS)
+    wb.close()

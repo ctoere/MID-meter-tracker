@@ -43,7 +43,9 @@ async function loadAll(){
     const d = await api("/api/register");
     Object.assign(S, {chargers:d.chargers, meters:d.meters, conflicts:d.conflicts,
                       manifest:d.manifest, gaps:d.gaps, stats:d.stats, meta:d.meta,
-                      conflictStats:d.conflictStats});
+                      conflictStats:d.conflictStats, conformity:d.conformity,
+                      conformityStats:d.conformityStats});
+    loadConformity();
     const p=$("#state"); p.classList.add("live");
     p.lastElementChild.textContent = d.meta.path.split(/[\\/]/).pop();
     p.title = d.meta.path;
@@ -701,6 +703,10 @@ function renderIntake(){
         <div class="field" style="margin-top:10px"><label>Link to an existing charger (ID) — leave blank to create a new row</label>
           <input data-k="chargerId" value="${esc(it.chargerId||"")}" placeholder="chg_0006"></div>
 
+        ${p.doc && p.doc.directive_cited ? `<div class="acts">
+          <button class="ghost" data-fanout="${esc(it.id)}">Link this declaration to every model it covers</button>
+          </div><div class="fanout"></div>` : ""}
+
         <div class="acts">
           <button class="primary" data-apply="${esc(it.id)}" ${it.applied?"disabled":""}>
             ${it.applied ? "Applied" : "Apply to the register"}</button>
@@ -723,10 +729,58 @@ function renderIntake(){
     card.querySelectorAll("[data-k]").forEach(el => el.onchange = () => {
       const item = S.intake.find(x => x.id === id);
       item[el.dataset.k] = el.value;
+      // Only kind and surface change what can be concluded, so only they need a
+      // re-read. Re-rendering for a plain text field would tear down the very
+      // input that fired the event — which throws inside the blur handler, and
+      // steals focus mid-typing.
       if(["kind","surface"].includes(el.dataset.k)) reprocess(id, {});
-      else renderIntake();
     });
   });
+  wrap.querySelectorAll("[data-fanout]").forEach(b => b.onclick = async () => {
+    const item = S.intake.find(x => x.id === b.dataset.fanout);
+    const card = b.closest(".icard");
+    const box  = card.querySelector(".fanout");
+    const brand = item.brand || "";
+    if(!brand) return toast("Set the brand on this document first — a declaration is matched per brand.");
+    const covered = (item.proposal.doc.models_covered || []).join("; ");
+    if(!covered) return toast("This declaration does not list the models it covers; link the rows by hand.");
+    try{
+      const d = await api("/api/conformity/match", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({brand, modelsCovered: covered})});
+      if(!d.matches.length){ box.innerHTML = `<div class="note warn">No register rows matched the models this
+        declaration lists. Check the brand spelling, or link the rows by hand.</div>`; return; }
+      box.innerHTML = `
+        <div class="note" style="font-size:12.5px"><b>${d.matches.length} row${d.matches.length===1?"":"s"} matched.</b>
+          Rows marked <b>check</b> are not pre-selected: the declaration names a more specific product than the
+          register row, so they may be different hardware.</div>
+        ${d.matches.map(m => `<label style="display:flex;gap:9px;align-items:flex-start;margin:7px 0;font-size:12.5px">
+          <input type="checkbox" class="fanRow" value="${esc(m.id)}" ${m.confidence==="check"?"":"checked"}
+                 style="margin-top:3px;width:auto">
+          <span><b>${esc(m.brand)} ${esc(m.model)}</b> <span class="mono" style="color:var(--ink-3)">${esc(m.id)}</span>
+            ${badge(m.status)}
+            <span class="badge b-${m.confidence==="exact"?"Integrated":m.confidence==="likely"?"Optional":"Unknown"}"><i></i>${esc(m.confidence)}</span>
+            <div style="color:var(--ink-2)">${esc(m.reason)}</div>
+            ${m.currentCertificate?`<div style="color:var(--warning)">already has a certificate — this would replace it</div>`:""}
+          </span></label>`).join("")}
+        <div class="acts"><button class="primary fanGo">Record the declaration and link the selected rows</button></div>
+        <div class="fanErr"></div>`;
+      box.querySelector(".fanGo").onclick = async () => {
+        const ids = Array.from(box.querySelectorAll(".fanRow:checked")).map(x => x.value);
+        const err = box.querySelector(".fanErr"); err.innerHTML = "";
+        try{
+          const res = await api("/api/conformity", {method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({brand, doc: item.proposal.doc, stored: item.stored,
+                                  link: item.stored.relative, applyTo: ids})});
+          S.conformity = res.conformity; S.conformityStats = res.conformityStats; S.stats = res.stats;
+          const reg = await api("/api/register");
+          S.chargers = reg.chargers;
+          await loadConformity(); renderAll();
+          toast(`Recorded ${res.record.ID} — linked ${res.linked.length} row${res.linked.length===1?"":"s"}`);
+        }catch(e){ err.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+      };
+    }catch(e){ toast(e.message); }
+  });
+
   wrap.querySelectorAll("[data-apply]").forEach(b => b.onclick = async () => {
     const id = b.dataset.apply;
     const item = S.intake.find(x => x.id === id);
@@ -750,9 +804,99 @@ function renderIntake(){
 }
 $("#lb").onclick = () => $("#lb").classList.remove("on");
 
+/* ───── conformity ─────
+   Brand-first, because one declaration usually covers a whole product family. */
+function renderConformity(){
+  const st = S.conformityStats || {};
+  $("#cfOut").textContent   = st.outstanding || 0;
+  $("#cfBrands").textContent= st.brands || 0;
+  $("#cfHeld").textContent  = st.held || 0;
+  $("#cfGood").textContent  = st.midEvidence || 0;
+  $("#cfBad").textContent   = st.notMidEvidence || 0;
+  $("#cCfm").textContent    = st.outstanding || 0;
+
+  const q = (S.cfq || "").toLowerCase();
+  const targets = (S.cfTargets || []).filter(t => !q || t.brand.toLowerCase().includes(q));
+  $("#cfTargets").innerHTML = targets.length ? targets.map(t => `
+    <div class="cf" data-brand="${esc(t.brand)}" style="border-left-color:${t.haveDocForBrand?"var(--good)":"var(--warning)"}">
+      <div class="hd">
+        <b>${esc(t.brand)}</b>
+        <span><span class="badge b-${t.haveDocForBrand?"Integrated":"Optional"}"><i></i>${t.count} row${t.count===1?"":"s"} waiting</span></span>
+      </div>
+      <div style="font-size:12.5px;color:var(--ink-2);margin-bottom:8px">
+        ${esc(t.models.slice(0,6).join(" · "))}${t.models.length>6?` · +${t.models.length-6} more`:""}
+      </div>
+      <div class="field" style="margin-bottom:9px">
+        <label>Where this brand publishes declarations
+          ${t.domain && t.domainIsGuess ? '<span style="color:var(--ink-3)">— guessed from a datasheet link, correct it if wrong</span>' : ""}</label>
+        <div style="display:flex;gap:7px">
+          <input class="cfDomain" value="${esc(t.domain||"")}" placeholder="e.g. alfen.com" style="flex:1">
+          <button class="ghost cfSaveDomain">Save</button>
+        </div>
+      </div>
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--accent);margin-bottom:8px">Searches for ${esc(t.brand)}</summary>
+        ${t.searches.map(l => `<div style="margin:7px 0">
+          <a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>
+          <div style="font-size:11.5px;color:var(--ink-3)">${esc(l.note)}</div></div>`).join("")}
+      </details>
+      <div class="acts">
+        <span class="reqnote">Found the PDF? Drop it on the Intake tab, tag it
+          <b>Declaration of conformity</b> with brand <b>${esc(t.brand)}</b> — it will offer to link every model it covers.</span>
+      </div>
+    </div>`).join("")
+    : `<div class="empty card">${(S.cfTargets||[]).length ? "No brands match that filter." : "Nothing outstanding — every eligible row has a certificate."}</div>`;
+
+  $("#cfTargets").querySelectorAll(".cfSaveDomain").forEach(b => b.onclick = async () => {
+    const card = b.closest(".cf");
+    try{
+      await api("/api/conformity/domain", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({brand: card.dataset.brand, domain: card.querySelector(".cfDomain").value})});
+      await loadConformity(); toast("Saved — searches rebuilt for this brand");
+    }catch(e){ toast(e.message); }
+  });
+
+  const rows = S.conformity || [];
+  $("#cfTable").innerHTML = rows.length ? rows.map(c => `<tr>
+      <td class="mono" style="font-size:11.5px">${esc(c.ID)}</td>
+      <td><b>${esc(c.Brand)}</b></td>
+      <td class="mono" style="font-size:11.5px">${esc(c["Certificate Number"]||"—")}</td>
+      <td>${esc(c["Issuing Body"]||"—")}</td>
+      <td>${c["Directive Cited"]
+        ? '<span class="badge b-Integrated"><i></i>2014/32/EU</span>'
+        : '<span class="badge b-None"><i></i>not MID evidence</span>'}</td>
+      <td style="font-size:12px;color:var(--ink-2)"><div class="clamp">${esc(c["Models Covered"]||"—")}</div></td>
+      <td class="mono" style="font-size:11px"><div class="clamp">${esc(c["Drive File"]||"—")}</div></td></tr>`).join("")
+    : `<tr><td colspan="7"><div class="empty">No declarations on file yet.</div></td></tr>`;
+}
+$("#cfq").oninput = e => { S.cfq = e.target.value; renderConformity(); };
+
+async function loadConformity(){
+  try{
+    const d = await api("/api/conformity/backlog");
+    S.cfTargets = d.targets; S.conformityStats = d.stats;
+    renderConformity();
+  }catch(e){ toast("Could not load the conformity backlog: "+e.message); }
+}
+
+$("#cfExportBtn").onclick = async () => {
+  try{
+    const d = await api("/api/conformity/export");
+    if(!d.rows.length) return toast("No declarations on file yet.");
+    const q = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+    const csv = [d.columns.join(",")]
+      .concat(d.rows.map(r => d.columns.map(c => q(r[c])).join(","))).join("\r\n");
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "Zeres_conformity_register.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`Exported ${d.rows.length} declaration${d.rows.length===1?"":"s"}`);
+  }catch(e){ toast(e.message); }
+};
+
 /* ───── boot ───── */
 function renderAll(){
   renderTiles(); renderDist(); renderBrands(); renderTable();
-  renderMeters(); renderConflicts(); renderManifest(); renderIntake();
+  renderMeters(); renderConflicts(); renderManifest(); renderIntake(); renderConformity();
 }
 loadAll();

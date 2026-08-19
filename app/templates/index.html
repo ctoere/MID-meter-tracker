@@ -23,6 +23,7 @@
   <button class="tab" aria-selected="false" data-t="conflicts">Conflicts<span class="c alert" id="cCon">0</span></button>
   <button class="tab" aria-selected="false" data-t="meters">Meters<span class="c" id="cMet">0</span></button>
   <button class="tab" aria-selected="false" data-t="manifest">Manifest<span class="c" id="cMan">0</span></button>
+  <button class="tab" aria-selected="false" data-t="conformity">Conformity<span class="c alert" id="cCfm">0</span></button>
   <button class="tab" aria-selected="false" data-t="intake">Intake<span class="c" id="cInt">0</span></button>
 </div></nav>
 
@@ -122,6 +123,50 @@
     <button class="primary" id="dlBtn">Download queued datasheets</button>
     <span class="mono" id="dlNote" style="font-size:12px;color:var(--ink-3)"></span>
   </div>
+</section>
+
+<!-- ═══════════ CONFORMITY ═══════════ -->
+<section class="panel" id="p-conformity">
+  <div class="tiles">
+    <div class="tile warn"><div class="l">Outstanding</div><div class="v" id="cfOut">0</div>
+      <div class="s">eligible rows with no certificate</div></div>
+    <div class="tile"><div class="l">Brands to chase</div><div class="v" id="cfBrands">0</div>
+      <div class="s">one document often clears several rows</div></div>
+    <div class="tile"><div class="l">Declarations held</div><div class="v" id="cfHeld">0</div>
+      <div class="s">on file</div></div>
+    <div class="tile"><div class="l">Usable as MID evidence</div><div class="v" id="cfGood">0</div>
+      <div class="s">cite 2014/32/EU</div></div>
+    <div class="tile"><div class="l">Filed but not evidence</div><div class="v" id="cfBad">0</div>
+      <div class="s">no 2014/32/EU citation</div></div>
+  </div>
+
+  <div class="note">
+    <b>A declaration of conformity is the strongest evidence this register can hold</b> — it names the
+    notified body and the models in scope, which a datasheet does not. It is also the most commonly
+    over-read: a declaration covering "the EVSE" under the Low Voltage and EMC directives looks entirely
+    official and says nothing about metrology. <b>Only a declaration citing 2014/32/EU counts.</b>
+  </div>
+  <div class="note warn">
+    <b>Work brand by brand, not row by row.</b> One declaration usually lists a whole product family, so a
+    single document can clear a dozen rows at once. The list below is ordered by how many rows each brand
+    would settle. Searching is the manual part — there is no EU registry of declarations, so the tool builds
+    the searches and reads what you bring back.
+  </div>
+
+  <div class="filters">
+    <input type="search" id="cfq" placeholder="Filter brands…" style="max-width:260px">
+    <div class="sp"></div>
+    <button class="ghost" id="cfExportBtn">Export the conformity register (.csv)</button>
+  </div>
+
+  <div class="sechead"><h2>Brands to chase</h2><div class="ln"></div></div>
+  <div id="cfTargets"></div>
+
+  <div class="sechead"><h2>Declarations on file</h2><div class="ln"></div></div>
+  <div class="tw" style="max-height:46vh"><table>
+    <thead><tr><th>ID</th><th>Brand</th><th>Certificate</th><th>Issuing body</th><th>Directive</th>
+      <th>Models covered</th><th>File</th></tr></thead>
+    <tbody id="cfTable"></tbody></table></div>
 </section>
 
 <!-- ═══════════ INTAKE ═══════════ -->

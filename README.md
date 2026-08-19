@@ -195,6 +195,41 @@ tagging.
 OCR needs Tesseract. Without it the intake says so clearly and stores the file anyway,
 rather than silently proposing `Unknown` as though it had looked.
 
+## Conformity — chasing declarations
+
+A declaration of conformity is the strongest evidence the register can hold: it names the
+notified body and the models in scope, which a datasheet does not. **Only one citing
+2014/32/EU counts** — a declaration covering "the EVSE" under the Low Voltage and EMC
+directives looks entirely official and says nothing about metrology.
+
+The Conformity tab shows the outstanding backlog: eligible rows with no certificate,
+**grouped by brand rather than by row**. That grouping is the point — a declaration is
+issued per brand or product family, so one document typically clears a whole range. At the
+time of writing that is 211 rows across 59 brands, which is 59 hunts, not 211.
+
+For each brand the tool builds the searches: its own site first (`site:alfen.com
+"declaration of conformity" "2014/32/EU"`), then the open web, in English, Dutch, German
+and French, plus the download paths manufacturers usually park documents under. The
+brand's domain is guessed from datasheet links already in the register and can be
+corrected once, after which it sticks. CDN and reseller hosts are ignored, since a link to
+a CDN says nothing about where a manufacturer publishes.
+
+**Discovery stays human.** There is no EU registry of declarations — each manufacturer
+publishes on their own site, often behind a portal or an email request. The tool builds
+the searches and reads what you bring back; a person decides which document is the right
+one.
+
+Drop the PDF on the Intake tab tagged as a declaration, and the **fan-out** proposes
+linking it to every register row it covers, as a checklist you approve. Matching is
+deliberately asymmetric: a declaration naming "Eve Mini" covers a row spelled "Eve Mini
+(ICU)", but one naming "Pulsar Plus" does **not** cover the base "Pulsar" — that is a
+different product, so it is surfaced at the weakest confidence and left unticked.
+
+Recording writes a row to the `Conformity` sheet — certificate number, issuing body,
+directive, models covered, Drive path, SHA-256 — which exports as CSV. A declaration that
+does not cite 2014/32/EU is still filed and still listed, but is **never** attached to a
+row as if it supported the claim.
+
 ## Safety properties
 
 - **Never writes in place.** Every save backs up first, writes to a temp file, then
@@ -216,7 +251,7 @@ same classification. Tesseract is deliberately not installed on the runner: the 
 to degrade with a clear message rather than crash when OCR is unavailable, and a runner
 without it is the honest test of that.
 
-165 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+189 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is

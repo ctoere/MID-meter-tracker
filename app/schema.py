@@ -83,6 +83,7 @@ SHEET_METERS = "Meters"
 SHEET_CONFLICTS = "Conflicts"
 SHEET_MANIFEST = "Manifest"
 SHEET_CHANGE_LOG = "Change Log"
+SHEET_CONFORMITY = "Conformity"
 
 CHARGER_COLUMNS: tuple[str, ...] = (
     "ID",                # stable, chg_0001 — never renumbered, never reused
@@ -143,6 +144,22 @@ MANIFEST_COLUMNS: tuple[str, ...] = (
     "Filename",
 )
 
+CONFORMITY_COLUMNS: tuple[str, ...] = (
+    "ID",                    # cfm_0001
+    "Brand",
+    "Certificate Number",
+    "Issuing Body",
+    "Directive Cited",       # "2014/32/EU", or empty — empty means NOT MID evidence
+    "Models Covered",
+    "Document Link",         # where it was found
+    "Drive File",            # our captured copy, relative to the Drive root
+    "SHA-256",
+    "Date Added",
+    "Added By",
+    "Review Needed",
+    "Notes",
+)
+
 CHANGE_LOG_COLUMNS: tuple[str, ...] = (
     "Timestamp",
     "User",
@@ -161,6 +178,7 @@ MANAGED_SHEETS: dict[str, tuple[str, ...]] = {
     SHEET_CONFLICTS: CONFLICT_COLUMNS,
     SHEET_MANIFEST: MANIFEST_COLUMNS,
     SHEET_CHANGE_LOG: CHANGE_LOG_COLUMNS,
+    SHEET_CONFORMITY: CONFORMITY_COLUMNS,
 }
 
 #: ID prefixes per sheet.
@@ -168,4 +186,5 @@ ID_PREFIX: dict[str, str] = {
     SHEET_CHARGERS: "chg",
     SHEET_METERS: "mtr",
     SHEET_CONFLICTS: "cfl",
+    SHEET_CONFORMITY: "cfm",
 }
