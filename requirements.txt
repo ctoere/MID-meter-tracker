@@ -1,16 +1,17 @@
-# Zeres MID Register — pinned dependencies (Python 3.11+)
-fastapi==0.115.6
-uvicorn==0.34.0
-openpyxl==3.1.5
-httpx==0.28.1
-python-dotenv==1.0.1
-jinja2==3.1.5
-python-multipart==0.0.20
+# Zeres MID Register — Python 3.11+
+# Pinned to the versions the test suite is actually verified against.
 
-# Phase 5 — intake text extraction
-pdfplumber==0.11.5
-pytesseract==0.3.13
-Pillow==11.1.0
+# app
+fastapi==0.141.1
+uvicorn==0.52.3
+python-multipart==0.0.32   # required by FastAPI for the intake file upload
+openpyxl==3.1.5            # the register is an .xlsx — see CLAUDE.md
+httpx==0.28.1              # datasheet downloader
+
+# intake — text extraction
+pdfplumber==0.11.10
+pytesseract==0.3.13        # needs the tesseract binary for OCR; degrades if absent
+Pillow==12.3.0
 
 # dev
-pytest==8.3.4
+pytest==9.1.1

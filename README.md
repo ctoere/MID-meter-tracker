@@ -189,7 +189,13 @@ rather than silently proposing `Unknown` as though it had looked.
 python -m pytest tests/ -q
 ```
 
-157 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+CI runs the suite on Python 3.11, 3.12 and 3.13 for every push and pull request
+(`.github/workflows/ci.yml`), and re-runs the migration to confirm it still produces the
+same classification. Tesseract is deliberately not installed on the runner: the intake has
+to degrade with a clear message rather than crash when OCR is unavailable, and a runner
+without it is the honest test of that.
+
+165 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is
