@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+backups/*.xlsx
+.pytest_cache/
+data/drive/

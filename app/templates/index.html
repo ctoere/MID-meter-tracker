@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeres — MID Register Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Ctext x='16' y='23' font-family='system-ui' font-size='19' font-weight='700' fill='white' text-anchor='middle'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="top"><div class="top-in">
+  <div class="logo">Z</div>
+  <div class="bl"><b>MID Register Console</b><span>Zeres · chargers, meters &amp; datasheet manifest</span></div>
+  <div class="sp"></div>
+  <span class="pill" id="state"><i></i><span>Loading…</span></span>
+  <button class="ghost" id="reloadBtn" title="Re-read the workbook from disk">Reload</button>
+  <button class="ghost" id="themeBtn">Dark</button>
+</div></header>
+
+<nav class="tabs"><div class="in">
+  <button class="tab" aria-selected="true" data-t="register">Register<span class="c" id="cReg">0</span></button>
+  <button class="tab" aria-selected="false" data-t="conflicts">Conflicts<span class="c alert" id="cCon">0</span></button>
+  <button class="tab" aria-selected="false" data-t="meters">Meters<span class="c" id="cMet">0</span></button>
+  <button class="tab" aria-selected="false" data-t="manifest">Manifest<span class="c" id="cMan">0</span></button>
+  <button class="tab" aria-selected="false" data-t="conformity">Conformity<span class="c alert" id="cCfm">0</span></button>
+  <button class="tab" aria-selected="false" data-t="intake">Intake<span class="c" id="cInt">0</span></button>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ═══════════ REGISTER ═══════════ -->
+<section class="panel on" id="p-register">
+  <div class="tiles">
+    <div class="tile"><div class="l">Chargers</div><div class="v" id="tTot">0</div><div class="s" id="tBrands">—</div></div>
+    <div class="tile"><div class="l">Eligible as sold</div><div class="v" id="tInt">0</div><div class="s">Integrated</div></div>
+    <div class="tile"><div class="l">Eligible, check unit</div><div class="v" id="tOpt">0</div><div class="s">Optional + External</div></div>
+    <div class="tile"><div class="l">Not eligible</div><div class="v" id="tNone">0</div><div class="s">no MID metering</div></div>
+    <div class="tile warn"><div class="l">Needs review</div><div class="v" id="tRev">0</div><div class="s">not safe to quote yet</div></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <h2 style="font-size:14px">MID status across the register</h2><span class="mono" style="color:var(--ink-3);font-size:12px" id="distNote"></span>
+    </div>
+    <div class="dist" id="dist"></div><div class="legend" id="leg"></div>
+  </div>
+
+  <div class="filters">
+    <input type="search" id="q" placeholder="Search brand, model, meter, notes…">
+    <div class="chipset" id="stChips">
+      <button class="chip" aria-pressed="true" data-s="all">All</button>
+      <button class="chip" aria-pressed="false" data-s="Integrated">Integrated</button>
+      <button class="chip" aria-pressed="false" data-s="Optional">Optional</button>
+      <button class="chip" aria-pressed="false" data-s="External">External</button>
+      <button class="chip" aria-pressed="false" data-s="None">None</button>
+      <button class="chip" aria-pressed="false" data-s="Unknown">Unknown</button>
+    </div>
+    <select id="brandSel" style="max-width:200px"><option value="">All brands</option></select>
+    <button class="ghost" id="revBtn" aria-pressed="false">Needs review only</button>
+    <div class="sp"></div>
+    <button class="primary" id="addChargerBtn">Add charger</button>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>kW</th><th>MID status</th><th>Meter</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody id="tb"></tbody></table></div>
+  <div class="mono" style="margin-top:8px;color:var(--ink-3);font-size:12px" id="rowNote"></div>
+</section>
+
+<!-- ═══════════ CONFLICTS ═══════════ -->
+<section class="panel" id="p-conflicts">
+  <div class="note crit">
+    <b>These are rows where the two old systems gave different answers.</b> Nothing was auto-picked — each one needs a
+    decision. The ones marked <b>opposed</b> are the serious ones: one source says eligible, the other says not, so the
+    answer a client got depended on which system the helpdesk happened to open.
+  </div>
+  <div class="filters">
+    <span class="mono" style="color:var(--ink-3);font-size:12px" id="cfCount"></span>
+  </div>
+  <div id="cfList"></div>
+</section>
+
+<!-- ═══════════ METERS ═══════════ -->
+<section class="panel" id="p-meters">
+  <div class="note">
+    <b>The meter is what carries MID certification, not the charger.</b> These are the metering components confirmed
+    inside specific chargers, or sold standalone. Cross-referenced from the register's Meter columns.
+  </div>
+  <div class="filters"><div class="sp"></div><button class="primary" id="addMeterBtn">Add meter</button></div>
+  <div class="tw"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>MID</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody id="mtb"></tbody></table></div>
+</section>
+
+<!-- ═══════════ MANIFEST ═══════════ -->
+<section class="panel" id="p-manifest">
+  <div class="tiles">
+    <div class="tile"><div class="l">Queued</div><div class="v" id="mTot">0</div><div class="s">rows in the manifest</div></div>
+    <div class="tile warn"><div class="l">Gaps</div><div class="v" id="mGap">0</div><div class="s">register rows with a link, not queued</div></div>
+    <div class="tile"><div class="l">On disk</div><div class="v" id="mHave">—</div><div class="s">present after the last run</div></div>
+  </div>
+
+  <div class="note">
+    <b>What the manifest is.</b> The download queue — one row per datasheet to fetch into the Drive folder tree.
+    A register row whose datasheet link never made it here is the recurring bug: the register looks complete while
+    the download queue quietly has holes. A row with an empty URL is fine — some datasheets came straight from the
+    manufacturer and are filed by hand.
+  </div>
+
+  <div class="sechead"><h2>Gaps</h2><div class="ln"></div>
+    <button class="primary" id="fixGaps">Queue all gaps</button></div>
+  <div id="gapList"></div>
+
+  <div class="sechead"><h2>Queue</h2><div class="ln"></div>
+    <input type="search" id="mq" placeholder="Filter…" style="max-width:240px">
+    <button class="ghost" id="addManBtn">Add row</button></div>
+  <div class="mono" id="mNoUrl" style="font-size:12px;color:var(--ink-3);margin-bottom:7px"></div>
+  <div class="tw" style="max-height:46vh"><table>
+    <thead><tr><th>Brand</th><th>Model</th><th>Folder</th><th>Filename</th><th>URL</th><th></th></tr></thead>
+    <tbody id="mtb2"></tbody></table></div>
+  <div class="acts">
+    <button class="primary" id="dlBtn">Download queued datasheets</button>
+    <span class="mono" id="dlNote" style="font-size:12px;color:var(--ink-3)"></span>
+  </div>
+</section>
+
+<!-- ═══════════ CONFORMITY ═══════════ -->
+<section class="panel" id="p-conformity">
+  <div class="tiles">
+    <div class="tile warn"><div class="l">Outstanding</div><div class="v" id="cfOut">0</div>
+      <div class="s">eligible rows with no certificate</div></div>
+    <div class="tile"><div class="l">Brands to chase</div><div class="v" id="cfBrands">0</div>
+      <div class="s">one document often clears several rows</div></div>
+    <div class="tile"><div class="l">Declarations held</div><div class="v" id="cfHeld">0</div>
+      <div class="s">on file</div></div>
+    <div class="tile"><div class="l">Usable as MID evidence</div><div class="v" id="cfGood">0</div>
+      <div class="s">cite 2014/32/EU</div></div>
+    <div class="tile"><div class="l">Filed but not evidence</div><div class="v" id="cfBad">0</div>
+      <div class="s">no 2014/32/EU citation</div></div>
+  </div>
+
+  <div class="note">
+    <b>A declaration of conformity is the strongest evidence this register can hold</b> — it names the
+    notified body and the models in scope, which a datasheet does not. It is also the most commonly
+    over-read: a declaration covering "the EVSE" under the Low Voltage and EMC directives looks entirely
+    official and says nothing about metrology. <b>Only a declaration citing 2014/32/EU counts.</b>
+  </div>
+  <div class="note warn">
+    <b>Work brand by brand, not row by row.</b> One declaration usually lists a whole product family, so a
+    single document can clear a dozen rows at once. The list below is ordered by how many rows each brand
+    would settle. Searching is the manual part — there is no EU registry of declarations, so the tool builds
+    the searches and reads what you bring back.
+  </div>
+
+  <div class="filters">
+    <input type="search" id="cfq" placeholder="Filter brands…" style="max-width:260px">
+    <div class="sp"></div>
+    <button class="ghost" id="cfExportBtn">Export the conformity register (.csv)</button>
+  </div>
+
+  <div class="sechead"><h2>Brands to chase</h2><div class="ln"></div></div>
+  <div id="cfTargets"></div>
+
+  <div class="sechead"><h2>Declarations on file</h2><div class="ln"></div></div>
+  <div class="tw" style="max-height:46vh"><table>
+    <thead><tr><th>ID</th><th>Brand</th><th>Certificate</th><th>Issuing body</th><th>Directive</th>
+      <th>Models covered</th><th>File</th></tr></thead>
+    <tbody id="cfTable"></tbody></table></div>
+</section>
+
+<!-- ═══════════ INTAKE ═══════════ -->
+<section class="panel" id="p-intake">
+  <div class="note">
+    <b>Drop a document, get a proposed row.</b> The app stores the file in the Drive tree, hashes it, extracts the
+    text, looks for actual metrology markings, and proposes a register row with the exact sentence that supports it.
+    Nothing is applied until you click apply.
+  </div>
+
+  <div class="dz" id="dz">
+    <h3>Drop datasheets, photos and conformity statements</h3>
+    <p>PDFs, images, EU declarations of conformity — mixed batches are fine.</p>
+    <button class="primary" id="pick">Choose files</button>
+  </div>
+
+  <div id="intakeList" style="margin-top:15px"></div>
+
+  <div id="intakeEmpty" class="card" style="margin-top:15px">
+    <h2 style="font-size:15px;margin-bottom:9px">What gets extracted from each type</h2>
+    <div class="grid3">
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-Integrated"><i></i>Datasheet</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Brand, model, variant / article number</li>
+          <li>The exact sentence stating MID status</li>
+          <li>Meter make and model, if named</li>
+          <li>Accuracy class (EN 50470-3 A/B/C)</li>
+          <li>Document version and date</li>
+        </ul>
+      </div>
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-Optional"><i></i>Nameplate photo</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Brand, type, serial, article number</li>
+          <li>M-in-rectangle marking + year</li>
+          <li>Four-digit notified body number</li>
+          <li>Accuracy class, MI-003</li>
+          <li>Whether it's the meter or the enclosure</li>
+        </ul>
+      </div>
+      <div>
+        <p style="margin:0 0 5px"><span class="badge b-External"><i></i>Conformity statement</span></p>
+        <ul class="tight" style="font-size:12.5px;color:var(--ink-2)">
+          <li>Certificate / DoC number</li>
+          <li>Issuing notified body</li>
+          <li>Directive cited (2014/32/EU, MI-003)</li>
+          <li>Exactly which models it covers</li>
+          <li>Issue date and validity</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note warn" style="margin-bottom:0">
+      <b>A conformity statement is the strongest evidence available</b> — stronger than a datasheet, because it names the
+      notified body and the models in scope. It is also the most commonly over-read: a DoC covering "the EVSE" is not a
+      MID certificate unless it cites 2014/32/EU. Worth checking rather than assuming.
+    </div>
+  </div>
+</section>
+
+</div>
+
+<div class="bd" id="bd"></div>
+<aside class="drawer" id="dr">
+  <div class="dh"><div style="flex:1"><h2 id="drT" style="font-size:16px">—</h2><div class="mono" style="font-size:12px;color:var(--ink-3)" id="drS"></div></div>
+    <button class="ghost" id="drC">Close</button></div>
+  <div class="db" id="drB"></div>
+  <div class="dfoot" id="drF" style="display:none"></div>
+</aside>
+
+<div class="lb" id="lb"><img id="lbi" alt=""></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fInt" accept="image/*,.pdf" multiple hidden>
+<span id="brandListHost"></span>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

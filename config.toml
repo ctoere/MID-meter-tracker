@@ -1,0 +1,25 @@
+# Zeres MID Register — local configuration.
+# Everything here is a path or a knob; no secrets (those live in .env).
+
+[storage]
+# The register workbook. This IS the database — see CLAUDE.md.
+register_path = "data/Zeres_MID_Register.xlsx"
+backup_dir    = "backups"
+keep_backups  = 30
+
+[drive]
+# Root of the Drive-synced folder. The Technical/ tree lives directly beneath it.
+# Change this to the real synced path on each machine, e.g.
+#   root = "/Users/you/Library/CloudStorage/GoogleDrive-you@zeres.nl/My Drive"
+root = "data/drive"
+
+[downloader]
+max_concurrent = 6
+timeout_seconds = 60
+max_retries = 4
+user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 ZeresMIDRegister/1.0"
+
+[server]
+host = "127.0.0.1"
+port = 8765
+open_browser = true

@@ -1,0 +1,11 @@
+# Windows batch files must keep CRLF endings — a .cmd with LF endings can
+# misparse labels and goto, which fails in ways that look like a broken script
+# rather than a line-ending problem.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Keep shell scripts LF whatever the checkout platform.
+*.sh text eol=lf
+
+# The register is the database; never let git touch its bytes.
+*.xlsx binary
