@@ -302,3 +302,33 @@ def test_refiling_a_photo_moves_it_into_the_evidence_tree(tmp_path, drive):
     provisional = filing.store(source, "datasheet", "Unsorted", "x.jpg", root=drive)
     moved = filing.refile(provisional, "photo", "Alfen", "Eve", root=drive)
     assert "Evidence/Photos/Alfen" in moved.relative.replace("\\", "/")
+
+
+# ── EU only ────────────────────────────────────────────────────────────────
+
+def test_a_ukca_declaration_is_not_mid_evidence():
+    """Great Britain replaced the MID with its own Measuring Instruments Regulations."""
+    text = ("UK Declaration of Conformity. UKCA. In accordance with the Measuring Instruments "
+            "Regulations 2016 (S.I. 2016/1153). UK Approved Body 0126. Models: Eve Single.")
+    p = proposals.decide(text, "doc")
+    assert p.status == "Unknown"
+    assert p.doc.is_non_eu
+    assert "UK or US declaration" in " ".join(p.reasoning)
+
+
+def test_a_us_ntep_certificate_is_not_mid_evidence():
+    text = ("Certificate of Conformance. NTEP Certificate 21-045. Evaluated to NIST Handbook 44 "
+            "and ANSI C12.20.")
+    p = proposals.decide(text, "doc")
+    assert p.status == "Unknown"
+    assert p.doc.is_non_eu
+
+
+def test_a_combined_eu_and_uk_declaration_is_still_valid_eu_evidence():
+    """Manufacturers often issue one document for both markets. The EU half counts."""
+    text = ("EU and UK Declaration of Conformity. Conforms to Directive 2014/32/EU and the "
+            "Measuring Instruments Regulations 2016. UKCA and CE. MI-003. Models: Pulsar Plus.")
+    p = proposals.decide(text, "doc")
+    assert p.doc.directive_cited
+    assert not p.doc.is_non_eu
+    assert p.status == "Integrated"

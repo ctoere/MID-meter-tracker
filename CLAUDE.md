@@ -63,6 +63,15 @@ notified body and the models in scope. But a DoC that does not cite 2014/32/EU i
 evidence at all. Extract the certificate number, issuing body, directive cited and models
 covered, and say plainly when the directive is absent.
 
+**EU only. UK and US conformity documents do not count.** Great Britain replaced the MID
+with its own Measuring Instruments Regulations 2016 (S.I. 2016/1153) and the UKCA marking;
+the United States uses NTEP certificates against NIST Handbook 44. Neither has any standing
+with the NEa. A UKCA declaration reads almost exactly like an EU one — same layout, same
+heading, often the same product — so `app/intake/proposals.py` detects the non-EU markers
+and names the regime, rather than reporting a vague "no directive cited" that sends someone
+hunting for a citation that will never be there. A combined EU+UK declaration is fine: what
+matters is that 2014/32/EU is cited somewhere.
+
 **The meter carries the certification, not the charger.** A charger row should point at a
 meter row wherever the meter is identified.
 

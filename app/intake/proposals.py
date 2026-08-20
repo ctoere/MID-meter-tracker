@@ -42,6 +42,35 @@ _CERT_LOOSE = re.compile(r"\b(T\d{4,6}|DE-\d{2}-MI\d{3}-[A-Z0-9]+|[A-Z]{2}\d{2}-
 #: Notified bodies that actually issue MID electricity-meter certificates.
 _BODIES = re.compile(r"\b(NMi(?:\s+Certin)?|PTB|DEKRA|T[ÜU]V\s?(?:Rheinland|S[ÜU]D|NORD)?|"
                      r"SGS|Bureau\s+Veritas|METAS|RISE|Cesi|IMQ|LNE)\b", re.IGNORECASE)
+#: Markers of a NON-EU conformity regime. These matter because a UKCA or US
+#: declaration reads almost exactly like an EU one — same layout, same
+#: "declaration of conformity" heading, often the same product — while resting
+#: on an entirely different legal framework. Great Britain replaced the MID with
+#: its own Measuring Instruments Regulations 2016; the US uses NTEP certificates
+#: against NIST Handbook 44. Neither has any standing with the NEa.
+#:
+#: Only 2014/32/EU makes a declaration usable for the REV. These patterns exist
+#: so a non-EU document is named as such instead of being quietly filed as
+#: "no directive found".
+NON_EU_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\bUKCA\b", "UKCA marking — Great Britain, not the EU"),
+    (r"\bUK\s+Conformity\s+Assessed\b", "UK Conformity Assessed — not the EU"),
+    (r"\bMeasuring\s+Instruments\s+Regulations\s+2016\b",
+     "UK Measuring Instruments Regulations 2016 — Great Britain's replacement for the MID"),
+    (r"\bS\.?I\.?\s*2016/1153\b", "UK statutory instrument 2016/1153, not 2014/32/EU"),
+    (r"\bUK\s+Approved\s+Body\b", "UK Approved Body, not an EU notified body"),
+    (r"\bGreat\s+Britain\b(?![^.]{0,40}\bEU\b)", "scoped to Great Britain"),
+    (r"\bNTEP\b", "US NTEP certificate — National Type Evaluation Program"),
+    (r"\bNIST\s+Handbook\s+44\b", "US NIST Handbook 44, not EN 50470"),
+    (r"\bHandbook\s+44\b", "US NIST Handbook 44, not EN 50470"),
+    (r"\bNational\s+Type\s+Evaluation\b", "US type evaluation, not EU"),
+    (r"\bANSI\s?C12\b", "US ANSI C12 metering standard, not EN 50470"),
+    (r"\bCertificate\s+of\s+Conformance\b", "US 'Certificate of Conformance' wording"),
+    (r"\bUL\s?2594\b", "UL 2594 — US/Canada EVSE safety standard"),
+    (r"\bFCC\b", "US FCC — a United States document"),
+    (r"\bCSA\b", "CSA — Canada/US certification"),
+)
+
 _MODELS = re.compile(r"\b(?:model|models|type|types|modell|typen|artikel)\b\s*(?:\(s\))?\s*[:\-]\s*([^\n]{3,120})",
                      re.IGNORECASE)
 
@@ -53,6 +82,12 @@ class DocDetails:
     issuing_body: str = ""
     directive_cited: bool = False
     models_covered: list[str] = field(default_factory=list)
+    non_eu_markers: list[str] = field(default_factory=list)
+
+    @property
+    def is_non_eu(self) -> bool:
+        """A UK or US declaration, with no EU directive cited alongside it."""
+        return bool(self.non_eu_markers) and not self.directive_cited
 
     @property
     def is_mid_evidence(self) -> bool:
@@ -96,6 +131,10 @@ def read_doc(text: str) -> DocDetails:
     if body:
         details.issuing_body = body.group(1).strip()
     details.directive_cited = bool(re.search(r"\b2014\s?/\s?32\s?/\s?EU\b", text, re.IGNORECASE))
+    for pattern, explanation in NON_EU_PATTERNS:
+        found = re.search(pattern, text, re.IGNORECASE)
+        if found and explanation not in details.non_eu_markers:
+            details.non_eu_markers.append(explanation)
     for hit in _MODELS.finditer(text):
         value = hit.group(1).strip(" .;")
         if value and value not in details.models_covered:
@@ -140,6 +179,19 @@ def decide(text: str, kind: str, surface: str = SURFACE_UNKNOWN) -> Proposal:
             return _finish(proposal, found, text)
 
     # ---- declarations of conformity --------------------------------------
+    # A UK or US declaration first: it looks like an EU one and is the easier
+    # mistake to make, so it gets named rather than reported as "no directive".
+    if kind == "doc" and proposal.doc and proposal.doc.is_non_eu:
+        proposal.status = "Unknown"
+        proposal.reasoning.append(
+            "This is a UK or US declaration, not an EU one — "
+            + "; ".join(proposal.doc.non_eu_markers) + ". "
+            "Great Britain and the United States run their own conformity regimes, and neither "
+            "has standing with the NEa. Only a declaration citing 2014/32/EU supports an ERE "
+            "eligibility claim. File it if it is useful, but it cannot back a MID status.")
+        proposal.warnings.append("Non-EU declaration — cannot be used as MID evidence")
+        return _finish(proposal, found, text)
+
     if kind == "doc" and proposal.doc and not proposal.doc.directive_cited:
         proposal.status = "Unknown"
         proposal.reasoning.append(

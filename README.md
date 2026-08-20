@@ -177,6 +177,8 @@ What counts as evidence, and what does not:
 | Class A/B/C **with** EN 50470-3 cited | evidence |
 | `MID`, `MID-gecertificeerd`, `2014/32/EU` | evidence |
 | **CE mark** | **never evidence** — safety and EMC, not metrology |
+| UKCA / UK MI Regs 2016 | **not EU** — Great Britain's own regime, no standing with the NEa |
+| NTEP / NIST Handbook 44 | **not EU** — United States regime |
 | Class 1/2 under IEC 62053 | **not** evidence — the older, non-MID scheme |
 | Eichrecht / PTB / BAM | recorded separately — a different regime |
 
@@ -259,7 +261,7 @@ same classification. Tesseract is deliberately not installed on the runner: the 
 to degrade with a clear message rather than crash when OCR is unavailable, and a runner
 without it is the honest test of that.
 
-197 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+206 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is
