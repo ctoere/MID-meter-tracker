@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import (changelog, conflicts as conflicts_mod, conformity as conformity_mod,
                domain, downloader, drivecheck, manifest as manifest_mod, schema, storage)
-from .intake import extract as extract_mod, filing, proposals
+from .intake import extract as extract_mod, filing, proposals, scan as scan_mod
 from .config import get_config
 
 HERE = Path(__file__).resolve().parent
@@ -381,6 +381,35 @@ def get_download_status() -> dict:
 _intake: dict[str, dict] = {}
 
 
+def _stage_document(source: Path, original_name: str, kind: str, brand: str,
+                    model: str, surface: str, charger_id: str,
+                    current: dict | None) -> dict:
+    """Store one document and build its staged intake item. Applies nothing."""
+    suffix = Path(original_name).suffix.lower()
+    stored = filing.store(
+        source, kind, brand or "Unsorted",
+        filing.suggested_filename(brand, model, kind, suffix),
+        charge_type=(current or {}).get("Charge Type", "AC"))
+    extraction = extract_mod.extract(stored.path)
+    proposal = proposals.build(extraction.text, kind, brand, model, current, surface)
+
+    item_id = f"in_{uuid.uuid4().hex[:8]}"
+    record = {
+        "id": item_id,
+        "filename": original_name,
+        "kind": kind, "surface": surface,
+        "brand": brand, "model": model, "chargerId": charger_id,
+        "stored": stored.__dict__,
+        "extraction": {"method": extraction.method, "pages": extraction.pages,
+                       "characters": len(extraction.text or ""),
+                       "warnings": extraction.warnings},
+        "proposal": proposal.as_dict(),
+        "applied": False,
+    }
+    _intake[item_id] = record
+    return record
+
+
 @app.post("/api/intake")
 async def post_intake(
     file: UploadFile = File(...),
@@ -400,32 +429,11 @@ async def post_intake(
     suffix = Path(file.filename or "upload").suffix.lower()
     staging = Path(tempfile.mkdtemp()) / (file.filename or f"upload{suffix}")
     staging.write_bytes(await file.read())
-
     try:
-        stored = filing.store(
-            staging, kind, brand or "Unsorted",
-            filing.suggested_filename(brand, model, kind, suffix),
-            charge_type=(current or {}).get("Charge Type", charge_type))
-        extraction = extract_mod.extract(stored.path)
-        proposal = proposals.build(extraction.text, kind, brand, model, current, surface)
+        return _stage_document(staging, file.filename or staging.name, kind, brand,
+                               model, surface, charger_id, current)
     finally:
         staging.unlink(missing_ok=True)
-
-    item_id = f"in_{uuid.uuid4().hex[:8]}"
-    record = {
-        "id": item_id,
-        "filename": file.filename,
-        "kind": kind, "surface": surface,
-        "brand": brand, "model": model, "chargerId": charger_id,
-        "stored": stored.__dict__,
-        "extraction": {"method": extraction.method, "pages": extraction.pages,
-                       "characters": len(extraction.text or ""),
-                       "warnings": extraction.warnings},
-        "proposal": proposal.as_dict(),
-        "applied": False,
-    }
-    _intake[item_id] = record
-    return record
 
 
 @app.get("/api/intake")
@@ -648,3 +656,79 @@ def get_conformity_export() -> dict:
 def get_drive_status() -> dict:
     """Where documents are being filed, and whether that is really Drive."""
     return drivecheck.check().as_dict()
+
+
+# ---------------------------------------------------------------------------
+# folder scan — the intake pipeline over a local folder, minus the uploading
+# ---------------------------------------------------------------------------
+
+_scan: scan_mod.ScanJob | None = None
+
+
+def _run_scan(folder: Path, default_kind: str) -> None:
+    """Walk the folder and stage everything worth staging. Runs on a thread."""
+    global _scan
+    job = _scan
+    reg = register()
+    files, job.ignored, job.truncated = scan_mod.discover(folder)
+    job.total = len(files)
+    known_brands = sorted({str(c.get("Brand", "")).strip()
+                           for c in reg.chargers if c.get("Brand")})
+    done_hashes = scan_mod.applied_hashes(reg.conformity)
+    staged_hashes = {item["stored"]["sha256"] for item in _intake.values()}
+
+    for path in files:
+        try:
+            digest = extract_mod.sha256(path)
+            if digest in done_hashes:
+                job.skipped_applied += 1
+                continue
+            if digest in staged_hashes:
+                job.skipped_staged += 1
+                continue
+
+            kind = scan_mod.guess_kind(path, default_kind)
+            brand = scan_mod.guess_brand(path, known_brands, folder)
+            item = _stage_document(path, path.name, kind, brand, "",
+                                   proposals.SURFACE_UNKNOWN, "", None)
+            staged_hashes.add(digest)
+            job.staged += 1
+            if item["stored"].get("duplicate_of"):
+                job.duplicates += 1
+        except Exception as exc:      # one unreadable file must not stop the other 149
+            job.failures.append({"file": path.name, "error": str(exc)[:200]})
+        finally:
+            job.done += 1
+
+    job.running = False
+
+
+@app.post("/api/intake/scan")
+async def post_intake_scan(payload: dict = Body(...)) -> dict:
+    """Scan a local folder into the intake queue. Returns at once; poll for progress."""
+    global _scan
+    if _scan is not None and _scan.running:
+        raise HTTPException(status_code=409, detail="A scan is already running.")
+
+    raw = str(payload.get("folder") or "").strip().strip('"')
+    if not raw:
+        raise HTTPException(status_code=422, detail="Name the folder to scan.")
+    folder = Path(raw).expanduser()
+    if not folder.is_dir():
+        raise HTTPException(
+            status_code=422,
+            detail=f"{folder} is not a folder this machine can see. For a Drive folder, "
+                   f"use its local synced path (G:\\Shared drives\\... on Windows), "
+                   f"not the drive.google.com link.")
+
+    default_kind = str(payload.get("defaultKind") or "doc")
+    _scan = scan_mod.ScanJob(folder=str(folder))
+    asyncio.get_running_loop().run_in_executor(None, _run_scan, folder, default_kind)
+    return {"ok": True, "folder": str(folder)}
+
+
+@app.get("/api/intake/scan/status")
+def get_intake_scan_status() -> dict:
+    if _scan is None:
+        return {"idle": True}
+    return {"idle": False, **_scan.summary()}

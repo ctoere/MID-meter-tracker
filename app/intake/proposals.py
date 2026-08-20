@@ -34,9 +34,17 @@ SURFACE_EXTERIOR = "exterior"       # the enclosure / outside nameplate
 SURFACE_METER = "meter"             # the meter itself, cover removed
 SURFACE_UNKNOWN = "unsure"
 
+# The gap between the word "certificate" and the number is lazy on purpose:
+# greedy, "Certificate T10402 issued by NMi Certin B.V." skates past T10402 and
+# captures "Certin" — the nearest capital-lettered word to the 30-char horizon,
+# not the nearest one to the keyword.
 _CERT_NUMBER = re.compile(
     r"\b(?:certificate|certificaat|zertifikat|type[\s-]?examination|EU[\s-]?type)\b"
-    r"[^\n:]{0,30}[:\s]\s*([A-Z]{1,4}[\-\s]?[A-Z0-9][A-Z0-9\-./]{2,24})", re.IGNORECASE)
+    r"[^\n:]{0,30}?[:\s]\s*"
+    # ...and the number must contain a digit, or filler words qualify: in
+    # "Certificaat nummer T10402" the token "nummer" is four letters and a
+    # dash-free string, which the old pattern happily took for a certificate.
+    r"((?=[A-Z0-9\-./]{0,10}\d)[A-Z0-9][A-Z0-9\-./]{2,24})", re.IGNORECASE)
 _CERT_LOOSE = re.compile(r"\b(T\d{4,6}|DE-\d{2}-MI\d{3}-[A-Z0-9]+|[A-Z]{2}\d{2}-MI\d{3}-[A-Z0-9]+)\b")
 
 #: Notified bodies that actually issue MID electricity-meter certificates.

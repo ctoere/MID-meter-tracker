@@ -924,6 +924,39 @@ $("#cfExportBtn").onclick = async () => {
   }catch(e){ toast(e.message); }
 };
 
+/* ───── folder scan ───── */
+let scanTimer;
+$("#scanBtn").onclick = async () => {
+  const folder = $("#scanPath").value.trim();
+  if(!folder) return toast("Name the folder to scan.");
+  try{
+    await api("/api/intake/scan", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({folder, defaultKind: $("#scanKind").value})});
+    $("#scanBtn").disabled = true;
+    goTab("intake");
+    clearInterval(scanTimer); scanTimer = setInterval(pollScan, 900); pollScan();
+  }catch(e){ $("#scanNote").textContent = e.message; toast(e.message); }
+};
+async function pollScan(){
+  try{
+    const d = await api("/api/intake/scan/status");
+    if(d.idle) return;
+    $("#scanNote").textContent =
+      `${d.done}/${d.total} — ${d.staged} staged, ${d.skippedApplied} already in the conformity register, `+
+      `${d.skippedStaged} already staged, ${d.duplicates} already filed, ${d.ignored} ignored`+
+      `${d.failures.length ? ", " + d.failures.length + " unreadable" : ""}`+
+      `${d.truncated ? " — folder holds more than the per-scan cap; scan a subfolder for the rest" : ""}`;
+    const items = await api("/api/intake");
+    S.intake = items.items;
+    renderIntake(); renderTiles();
+    if(!d.running){
+      clearInterval(scanTimer); $("#scanBtn").disabled = false;
+      toast(`Scan finished — ${d.staged} proposal${d.staged===1?"":"s"} to review`);
+      if(d.failures.length) console.warn("scan failures", d.failures);
+    }
+  }catch(e){ clearInterval(scanTimer); $("#scanBtn").disabled = false; toast(e.message); }
+}
+
 /* ───── boot ───── */
 function renderAll(){
   renderTiles(); renderDist(); renderBrands(); renderTable();

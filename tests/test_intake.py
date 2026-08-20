@@ -332,3 +332,18 @@ def test_a_combined_eu_and_uk_declaration_is_still_valid_eu_evidence():
     assert p.doc.directive_cited
     assert not p.doc.is_non_eu
     assert p.status == "Integrated"
+
+
+def test_certificate_number_is_the_one_next_to_the_keyword():
+    """Regression: a greedy gap read 'Certificate T10402 issued by NMi Certin'
+    and captured 'Certin' — the nearest capitalised word to the gap's horizon
+    rather than the number beside the keyword."""
+    doc = proposals.read_doc("Certificate T10402 issued by NMi Certin B.V.")
+    assert doc.certificate_number == "T10402"
+    assert doc.issuing_body == "NMi Certin"
+
+
+def test_certificate_number_skips_filler_words_and_requires_a_digit():
+    assert proposals.read_doc("Certificaat nummer T10402, NMi").certificate_number == "T10402"
+    assert proposals.read_doc("Certificate number: DE-16-MI003-PTB021").certificate_number \
+        == "DE-16-MI003-PTB021"

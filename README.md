@@ -202,6 +202,14 @@ is recognised by hash rather than stored twice. Files land immediately (losing b
 worse than filing them imprecisely) and move to the right branch when you correct the
 tagging.
 
+**Scanning a folder.** Instead of dragging files, point the Intake tab's folder scan at a
+local path — a Drive-synced folder works, since those files are already on disk. Every
+readable document goes through the same store → extract → propose pipeline and lands as a
+proposal card; documents already recorded in the Conformity register are recognised by
+SHA-256 and skipped, so rescanning a folder only surfaces the work that is still open.
+Kind is guessed from the filename (with a per-scan default), brand from the folder name
+against brands the register knows — both shown as guesses for the human to correct.
+
 OCR needs Tesseract. Without it the intake says so clearly and stores the file anyway,
 rather than silently proposing `Unknown` as though it had looked.
 
@@ -261,7 +269,7 @@ same classification. Tesseract is deliberately not installed on the runner: the 
 to degrade with a clear message rather than crash when OCR is unavailable, and a runner
 without it is the honest test of that.
 
-206 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+223 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is
