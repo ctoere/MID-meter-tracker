@@ -122,8 +122,23 @@ def test_resolution_appends_both_sides_to_the_notes(client):
     client.post("/api/conflicts/cfl_0001/resolve",
                 json={"decision": "Optional", "reason": "datasheet"})
     note = storage.load().charger("chg_0006")["Notes (EN)"]
-    assert "Tracker said Optional" in note
-    assert "Zite said None" in note
+    assert "said Optional" in note
+    assert "said None" in note
+
+
+def test_the_notes_name_the_actual_sources_that_disagreed(client):
+    """Whoever reads the row later needs to know which two things disagreed."""
+    reg = storage.load()
+    reg.conflicts[0]["Source A"] = "MID Register"
+    reg.conflicts[0]["Source B"] = "Zeres laadpalen list v19 Aug 2026"
+    storage.save(reg)
+    server.reload_register()
+
+    client.post("/api/conflicts/cfl_0001/resolve",
+                json={"decision": "Optional", "reason": "datasheet confirms the variant"})
+    note = storage.load().charger("chg_0006")["Notes (EN)"]
+    assert "MID Register said Optional" in note
+    assert "Zeres laadpalen list v19 Aug 2026 said None" in note
 
 
 def test_a_resolved_conflict_cannot_be_silently_redecided(client):

@@ -126,6 +126,13 @@ CONFLICT_COLUMNS: tuple[str, ...] = (
     "Charger ID",
     "Brand",
     "Model",
+    # The two sides are named per-row rather than baked into the column headings.
+    # These columns were written for the original tracker-vs-Zite disagreement,
+    # but any two sources can disagree, and a helpdesk reading "Zite dashboard"
+    # when the source was actually a 2026 spreadsheet would be misled about how
+    # much weight to give it.
+    "Source A",          # what the "Tracker says" column actually came from
+    "Source B",          # what the "Zite says" column actually came from
     "Tracker says",
     "Tracker note",
     "Zite says",

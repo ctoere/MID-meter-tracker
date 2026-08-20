@@ -436,10 +436,10 @@ function renderConflicts(){
         the other says not. Whichever system the helpdesk opened decided what this client was told.</div>` : ""}
       <div class="opts">
         <div class="opt ${c.Decision===c["Tracker says"]?"sel":""}" data-v="${esc(c["Tracker says"])}">
-          <div class="src">Research tracker</div>${badge(c["Tracker says"])}
+          <div class="src">${esc(c["Source A"] || "Research tracker")}</div>${badge(c["Tracker says"])}
           <p>${esc(String(c["Tracker note"]||"").slice(0,300))||"no note"}</p></div>
         <div class="opt ${c.Decision===c["Zite says"]?"sel":""}" data-v="${esc(c["Zite says"])}">
-          <div class="src">Zite dashboard ${c["Zite original value"]?`<span class="mono">(${esc(c["Zite original value"])})</span>`:""}</div>${badge(c["Zite says"])}
+          <div class="src">${esc(c["Source B"] || "Zite dashboard")} ${c["Zite original value"]?`<span class="mono">(says “${esc(c["Zite original value"])}”)</span>`:""}</div>${badge(c["Zite says"])}
           <p>${esc(String(c["Zite note"]||"").slice(0,300))||"no note"}</p></div>
       </div>
       ${c.open ? `<div class="field" style="margin-top:10px">
