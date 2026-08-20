@@ -23,14 +23,18 @@ def test_round_trip_loses_nothing(sandbox):
 
 
 def test_round_trip_preserves_the_real_row_counts(sandbox):
-    """The migrated register holds 380 chargers and 4 meters. A save must not change that."""
+    """The live register: 380 migrated + 67 imported chargers, 4 meters, 27 conflicts.
+
+    A save must not change any of these. The numbers move only when an import
+    or an edit deliberately moves them — update this test in the same commit.
+    """
     before = storage.load()
-    assert len(before.chargers) == 380
+    assert len(before.chargers) == 447
     assert len(before.meters) == 4
+    assert len(before.conflicts) == 27
     storage.save(before)
     after = storage.load()
-    assert len(after.chargers) == 380
-    assert len(after.meters) == 4
+    assert (len(after.chargers), len(after.meters), len(after.conflicts)) == (447, 4, 27)
 
 
 def test_column_order_is_stable(sandbox):

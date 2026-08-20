@@ -146,8 +146,8 @@ DOC_WITHOUT = {"certificate_number": "ABC-1", "issuing_body": "TUV",
 
 def test_backlog_endpoint_reports_the_real_numbers(client):
     body = client.get("/api/conformity/backlog").json()
-    assert body["stats"]["outstanding"] == 211
-    assert body["stats"]["brands"] == 59
+    assert body["stats"]["outstanding"] == 258
+    assert body["stats"]["brands"] == 68
     assert body["targets"][0]["count"] >= body["targets"][-1]["count"]
     assert body["targets"][0]["searches"]
 

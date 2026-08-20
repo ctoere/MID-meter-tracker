@@ -89,7 +89,7 @@ def test_new_charger_gets_a_fresh_id_and_defaults_to_unknown(client):
     assert res.status_code == 200
     row = res.json()["row"]
 
-    assert row["ID"] == "chg_0381"
+    assert row["ID"] == "chg_0448"
     assert row["MID Status"] == "Unknown"          # absence of evidence, never None
     assert row["Review Needed"]                    # not safe to quote
     assert row["Drive Folder"] == "Technical/Chargers/AC Chargers/Testmerk"
@@ -103,12 +103,12 @@ def test_new_row_requires_brand_and_model(client):
 def test_ids_are_never_reused(client):
     """Deleting a row must not hand its ID to different hardware."""
     reg = storage.load()
-    reg.chargers = [r for r in reg.chargers if r["ID"] != "chg_0380"]
+    reg.chargers = [r for r in reg.chargers if r["ID"] != "chg_0447"]
     storage.save(reg)
     server.reload_register()
 
     res = client.post("/api/chargers", json={"fields": {"Brand": "Testmerk", "Model": "TM-2"}})
-    assert res.json()["row"]["ID"] == "chg_0381"   # max+1, not count+1
+    assert res.json()["row"]["ID"] == "chg_0448"   # max+1 over the log, not count+1
 
 
 def test_new_meter_is_created_in_the_meters_sheet(client):

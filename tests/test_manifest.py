@@ -10,9 +10,21 @@ KNOWN_GAPS = {
 
 
 def test_finds_the_known_gaps(sandbox):
+    """The original three gaps must stay visible among the ones the import added."""
     register = storage.load()
-    gaps = manifest.find_gaps(register.chargers, register.meters, register.manifest)
-    assert {g["Datasheet Link"] for g in gaps} == KNOWN_GAPS
+    gaps = {g["Datasheet Link"] for g in manifest.find_gaps(register.chargers, register.meters,
+                                                            register.manifest)}
+    assert KNOWN_GAPS <= gaps
+    assert len(gaps) == 38          # 3 original + 35 from the imported list
+
+
+def test_no_gap_is_a_free_text_note(sandbox):
+    """Regression: the laadpalen import initially copied provenance notes like
+    "opgave via website fabrikant" into Datasheet Link, and gap detection
+    reported them as downloads waiting to happen."""
+    register = storage.load()
+    for gap in manifest.find_gaps(register.chargers, register.meters, register.manifest):
+        assert gap["Datasheet Link"].startswith("http"), gap["ID"]
 
 
 def test_catches_a_row_removed_from_the_queue(sandbox):
@@ -34,7 +46,7 @@ def test_gap_count_is_unchanged_by_a_no_op_save(sandbox):
     storage.save(register)
     reloaded = storage.load()
     after = len(manifest.find_gaps(reloaded.chargers, reloaded.meters, reloaded.manifest))
-    assert after == before == 3
+    assert after == before == 38
 
 
 def test_blank_url_rows_are_not_failures(sandbox):
@@ -44,14 +56,14 @@ def test_blank_url_rows_are_not_failures(sandbox):
                               "SubFolder": "Chargers\\AC Chargers\\Alfen", "Url": "", "Filename": "x.pdf"})
     assert "" not in manifest.queued_urls(register.manifest)
     # and it does not create a gap for itself
-    assert len(manifest.find_gaps(register.chargers, register.meters, register.manifest)) == 3
+    assert len(manifest.find_gaps(register.chargers, register.meters, register.manifest)) == 38
 
 
 def test_queueing_gaps_closes_them(sandbox):
     register = storage.load()
     gaps = manifest.find_gaps(register.chargers, register.meters, register.manifest)
     added = manifest.queue_rows(register.manifest, gaps)
-    assert len(added) == 3
+    assert len(added) == 38
     assert manifest.find_gaps(register.chargers, register.meters, register.manifest) == []
 
 

@@ -44,6 +44,13 @@ from app.config import PROJECT_ROOT
 
 SOURCE = PROJECT_ROOT / "data" / "source" / "Zeres_laadpalen_met_MIDmeter_v19aug2026.xlsx"
 SOURCE_NAME = "Zeres laadpalen list v19 Aug 2026"
+
+#: The list's source column mixes real URLs with free text — "opgave via website
+#: fabrikant", "Datasheet ontvangen van Blue Current", "Zie Zeres docs". Those are
+#: provenance notes, not links. Putting them in Datasheet Link would make gap
+#: detection report them as datasheets waiting to be downloaded, which is exactly
+#: the false signal the gap feature exists to avoid.
+IS_URL = re.compile(r"^https?://", re.IGNORECASE)
 REGISTER_NAME = "MID Register"
 
 #: Ja / Misschien / Nee, before the notes are consulted.
@@ -226,6 +233,10 @@ def apply(register, conflicts, additions) -> dict:
         note = (f"{record['note']}\n\n[imported {stamp[:10]} from {SOURCE_NAME}] "
                 f"Listed as {record['verdict']!r}; recorded as {reading.status} because "
                 f"{reading.reason}.")
+        if record["url"] and not IS_URL.match(record["url"]):
+            # Keep it — it says where the document actually is — but as provenance,
+            # not as a link something will try to download.
+            note += f"\nSource column (not a URL): {record['url']}"
         row = {column: "" for column in schema.CHARGER_COLUMNS}
         row.update({
             "ID": row_id,
@@ -233,7 +244,7 @@ def apply(register, conflicts, additions) -> dict:
             "Model": record["model"],
             "Charge Type": "AC",
             "MID Status": reading.status,
-            "Datasheet Link": record["url"],
+            "Datasheet Link": record["url"] if IS_URL.match(record["url"]) else "",
             "Drive Folder": f"Technical/Chargers/AC Chargers/{record['brand']}",
             "Research Status": "Needs Research",
             "Source": SOURCE_NAME,
