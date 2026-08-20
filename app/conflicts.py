@@ -115,12 +115,14 @@ def resolve(register, conflict_id: str, decision: str, reason: str,
         )
 
     tracker, zite = sides(conflict)
+    name_a = str(conflict.get("Source A", "") or "the research tracker")
+    name_b = str(conflict.get("Source B", "") or "Zite")
     if decision == tracker == zite:
         chose = "both sources"
     elif decision == tracker:
-        chose = "the research tracker"
+        chose = name_a
     elif decision == zite:
-        chose = "Zite"
+        chose = name_b
     else:
         chose = "neither source"
     full_reason = f"Conflict {conflict_id} resolved in favour of {chose} ({decision}). {reason}"
@@ -140,7 +142,7 @@ def resolve(register, conflict_id: str, decision: str, reason: str,
     charger["Notes (EN)"] = domain.append_note(
         charger.get("Notes (EN)"),
         f"[conflict {conflict_id} resolved {domain.now_stamp()[:10]} by {who}] "
-        f"Tracker said {tracker or '(blank)'}, Zite said {zite or '(blank)'}; "
+        f"{name_a} said {tracker or '(blank)'}, {name_b} said {zite or '(blank)'}; "
         f"followed {chose} — {decision}. {reason}")
 
     conflict["Decision"] = decision

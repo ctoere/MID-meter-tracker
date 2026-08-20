@@ -7,6 +7,7 @@ import webbrowser
 
 import uvicorn
 
+from . import drivecheck
 from .config import get_config
 from .server import app
 
@@ -22,6 +23,7 @@ def main() -> None:
         )
 
     print(f"Zeres MID Register — {cfg.register_path}")
+    print(drivecheck.describe(drivecheck.check(cfg)))
     print(f"  {url}")
     if cfg.open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()

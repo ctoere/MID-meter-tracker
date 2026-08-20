@@ -50,7 +50,15 @@ works and says so rather than failing.
 root = "/Users/you/Library/CloudStorage/GoogleDrive-you@zeres.nl/My Drive"
 ```
 
-`ZERES_REGISTER_PATH` and `ZERES_DRIVE_ROOT` override it per machine. Secrets, if any are
+Point `root` at the folder that **contains** `Technical` — the app appends `Technical`
+itself. A tree at `…\Operations bedrijven\Technical\Technical\Chargers` means
+`root = '…\Operations bedrijven\Technical'`; going one level deeper creates a third
+`Technical` nobody looks in. On Windows use **single quotes**: TOML treats `\` as an escape,
+so `"G:\Shared drives\..."` fails while `'G:\Shared drives\...'` works.
+
+The app checks this at startup and shows the live path in the header — a wrong folder is
+reported immediately rather than after twenty filed documents. `ZERES_REGISTER_PATH` and
+`ZERES_DRIVE_ROOT` override the config per machine. Secrets, if any are
 ever needed, go in `.env` — see `.env.example`. None are required today.
 
 ## Layout
@@ -169,6 +177,8 @@ What counts as evidence, and what does not:
 | Class A/B/C **with** EN 50470-3 cited | evidence |
 | `MID`, `MID-gecertificeerd`, `2014/32/EU` | evidence |
 | **CE mark** | **never evidence** — safety and EMC, not metrology |
+| UKCA / UK MI Regs 2016 | **not EU** — Great Britain's own regime, no standing with the NEa |
+| NTEP / NIST Handbook 44 | **not EU** — United States regime |
 | Class 1/2 under IEC 62053 | **not** evidence — the older, non-MID scheme |
 | Eichrecht / PTB / BAM | recorded separately — a different regime |
 
@@ -191,6 +201,14 @@ because the earlier revision is what an earlier claim was based on. An identical
 is recognised by hash rather than stored twice. Files land immediately (losing bytes is
 worse than filing them imprecisely) and move to the right branch when you correct the
 tagging.
+
+**Scanning a folder.** Instead of dragging files, point the Intake tab's folder scan at a
+local path — a Drive-synced folder works, since those files are already on disk. Every
+readable document goes through the same store → extract → propose pipeline and lands as a
+proposal card; documents already recorded in the Conformity register are recognised by
+SHA-256 and skipped, so rescanning a folder only surfaces the work that is still open.
+Kind is guessed from the filename (with a per-scan default), brand from the folder name
+against brands the register knows — both shown as guesses for the human to correct.
 
 OCR needs Tesseract. Without it the intake says so clearly and stores the file anyway,
 rather than silently proposing `Unknown` as though it had looked.
@@ -251,7 +269,7 @@ same classification. Tesseract is deliberately not installed on the runner: the 
 to degrade with a clear message rather than crash when OCR is unavailable, and a runner
 without it is the honest test of that.
 
-189 tests covering: the storage round trip and atomicity, backup rotation, stale-file
+223 tests covering: the storage round trip and atomicity, backup rotation, stale-file
 refusal, gap detection against the three real known gaps, the seed-vocabulary mapping
 including its negation and CE/Eichrecht traps, the status vocabulary, and the editing
 rules above — that a status change without a reason is refused, that the change log is

@@ -146,8 +146,8 @@ DOC_WITHOUT = {"certificate_number": "ABC-1", "issuing_body": "TUV",
 
 def test_backlog_endpoint_reports_the_real_numbers(client):
     body = client.get("/api/conformity/backlog").json()
-    assert body["stats"]["outstanding"] == 211
-    assert body["stats"]["brands"] == 59
+    assert body["stats"]["outstanding"] == 258
+    assert body["stats"]["brands"] == 68
     assert body["targets"][0]["count"] >= body["targets"][-1]["count"]
     assert body["targets"][0]["searches"]
 
@@ -208,3 +208,40 @@ def test_the_register_exports(client):
     body = client.get("/api/conformity/export").json()
     assert body["columns"][0] == "ID"
     assert len(body["rows"]) == 1
+
+
+# ── EU only: UK and US declarations are a different regime ─────────────────
+
+DOC_UK = {"certificate_number": "UK-1", "issuing_body": "", "directive_cited": False,
+          "models_covered": ["Eve Single Pro-line"],
+          "non_eu_markers": ["UKCA marking — Great Britain, not the EU"]}
+
+
+def test_a_uk_declaration_is_filed_but_named_as_non_eu(client):
+    """Only the EU regime has standing with the NEa.
+
+    A UKCA declaration reads almost exactly like an EU one, so the row has to say
+    it is a different regime — otherwise someone reads "no directive cited" and
+    goes looking for a citation that will never be there.
+    """
+    target = storage.load().chargers[0]
+    res = client.post("/api/conformity", json={
+        "brand": target["Brand"], "doc": DOC_UK, "link": "uk.pdf", "applyTo": [target["ID"]]})
+    assert res.status_code == 200
+    assert res.json()["linked"] == []                       # never attached to a row
+
+    record = storage.load().conformity[0]
+    assert record["Directive Cited"] == ""
+    assert "NOT EU" in record["Review Needed"]
+    assert "UKCA" in record["Review Needed"]
+    assert storage.load().charger(target["ID"])["Certificate Link"] == ""
+
+
+def test_a_plain_missing_directive_still_reads_differently_from_non_eu(client):
+    """Not every declaration without the directive is a UK one."""
+    res = client.post("/api/conformity", json={
+        "brand": "Alfen", "doc": DOC_WITHOUT, "applyTo": []})
+    assert res.status_code == 200
+    review = storage.load().conformity[0]["Review Needed"]
+    assert "does not cite 2014/32/EU" in review
+    assert "NOT EU" not in review

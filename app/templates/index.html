@@ -13,6 +13,7 @@
   <div class="logo">Z</div>
   <div class="bl"><b>MID Register Console</b><span>Zeres · chargers, meters &amp; datasheet manifest</span></div>
   <div class="sp"></div>
+  <span class="pill" id="drivePill" title="Where documents are filed"><i></i><span>Drive…</span></span>
   <span class="pill" id="state"><i></i><span>Loading…</span></span>
   <button class="ghost" id="reloadBtn" title="Re-read the workbook from disk">Reload</button>
   <button class="ghost" id="themeBtn">Dark</button>
@@ -28,6 +29,8 @@
 </div></nav>
 
 <div class="wrap">
+
+<div id="driveWarn"></div>
 
 <!-- ═══════════ REGISTER ═══════════ -->
 <section class="panel on" id="p-register">
@@ -71,9 +74,10 @@
 <!-- ═══════════ CONFLICTS ═══════════ -->
 <section class="panel" id="p-conflicts">
   <div class="note crit">
-    <b>These are rows where the two old systems gave different answers.</b> Nothing was auto-picked — each one needs a
-    decision. The ones marked <b>opposed</b> are the serious ones: one source says eligible, the other says not, so the
-    answer a client got depended on which system the helpdesk happened to open.
+    <b>These are rows where two sources gave different answers.</b> Each card names which two. Nothing was
+    auto-picked — every one needs a human decision, and the reason you give is written to the Change Log.
+    The ones marked <b>opposed</b> are the serious ones: one source says eligible, the other says not, so the
+    answer a client gets depends on which source the helpdesk happens to open.
   </div>
   <div class="filters">
     <span class="mono" style="color:var(--ink-3);font-size:12px" id="cfCount"></span>
@@ -181,6 +185,24 @@
     <h3>Drop datasheets, photos and conformity statements</h3>
     <p>PDFs, images, EU declarations of conformity — mixed batches are fine.</p>
     <button class="primary" id="pick">Choose files</button>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2 style="font-size:14px;margin-bottom:6px">Or scan a whole folder</h2>
+    <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-2)">
+      Point it at a folder on this PC — a Drive-synced path works, since those files are already local.
+      Every readable document is staged as a proposal; documents already recorded in the Conformity
+      register are recognised by hash and skipped. Nothing is applied without you.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="scanPath" placeholder="G:\Shared drives\ZERES Drive\...\Conformiteit" style="flex:1;min-width:280px">
+      <select id="scanKind" style="max-width:230px">
+        <option value="doc">Mostly declarations of conformity</option>
+        <option value="datasheet">Mostly datasheets</option>
+        <option value="">Guess per file</option>
+      </select>
+      <button class="primary" id="scanBtn">Scan folder</button>
+    </div>
+    <div class="mono" id="scanNote" style="font-size:12px;color:var(--ink-3);margin-top:8px"></div>
   </div>
 
   <div id="intakeList" style="margin-top:15px"></div>

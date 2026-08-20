@@ -273,9 +273,22 @@ def new_record(register, brand: str, doc: dict, stored: dict | None = None,
                link: str = "", user: str | None = None) -> Row:
     """Build a Conformity sheet row from an intake proposal's DoC details."""
     directive = "2014/32/EU" if doc.get("directive_cited") else ""
-    review = "" if directive else (
-        "This declaration does not cite 2014/32/EU, so it is NOT MID evidence. "
-        "Keep it on file, but do not use it to support an eligibility claim.")
+    non_eu = doc.get("non_eu_markers") or []
+    if directive:
+        review = ""
+    elif non_eu:
+        # Named explicitly: a UK or US declaration is not a near-miss EU one, it
+        # is a different regime, and someone reading this row later needs to know
+        # that chasing the "missing" directive would be wasted effort.
+        review = (
+            "NOT EU — this is a UK or US declaration (" + "; ".join(non_eu) + "). "
+            "Great Britain and the United States run their own conformity regimes and neither "
+            "has standing with the NEa. It cannot support an ERE eligibility claim. An EU "
+            "declaration citing 2014/32/EU is still needed for these models.")
+    else:
+        review = (
+            "This declaration does not cite 2014/32/EU, so it is NOT MID evidence. "
+            "Keep it on file, but do not use it to support an eligibility claim.")
     return {
         "ID": domain.next_id(register.conformity, schema.ID_PREFIX[schema.SHEET_CONFORMITY],
                              issued=[e.get("Row ID", "") for e in register.change_log]),
@@ -290,7 +303,7 @@ def new_record(register, brand: str, doc: dict, stored: dict | None = None,
         "Date Added": domain.now_stamp(),
         "Added By": user or domain.current_user(),
         "Review Needed": review,
-        "Notes": "",
+        "Notes": "; ".join(non_eu) if non_eu else "",
     }
 
 

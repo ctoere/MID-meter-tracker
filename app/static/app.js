@@ -46,6 +46,7 @@ async function loadAll(){
                       conflictStats:d.conflictStats, conformity:d.conformity,
                       conformityStats:d.conformityStats});
     loadConformity();
+    renderDrive(d.meta.drive);
     const p=$("#state"); p.classList.add("live");
     p.lastElementChild.textContent = d.meta.path.split(/[\\/]/).pop();
     p.title = d.meta.path;
@@ -58,6 +59,35 @@ async function loadAll(){
 $("#reloadBtn").onclick = async () => {
   await api("/api/reload",{method:"POST"}); await loadAll(); toast("Reloaded from disk");
 };
+$("#drivePill").onclick = async () => {
+  try{ renderDrive(await api("/api/drive")); toast(S.drive.headline); }catch(e){ toast(e.message); }
+};
+
+/* ───── where documents are filed ─────
+   The app writes to a folder and Google Drive for desktop syncs it, so pointing
+   it at the wrong folder looks exactly like working. Say so, permanently. */
+function renderDrive(drive){
+  if(!drive) return;
+  S.drive = drive;
+  const pill = $("#drivePill");
+  pill.classList.toggle("live", drive.level === "ok");
+  pill.classList.toggle("warn", drive.level === "warning");
+  pill.classList.toggle("bad",  drive.level === "error");
+  pill.lastElementChild.className = "p";
+  pill.lastElementChild.textContent = drive.technical || drive.root || "not configured";
+  pill.title = `${drive.headline}\n${drive.details.join("\n")}${drive.fix?"\n\nFix: "+drive.fix:""}`;
+
+  $("#driveWarn").innerHTML = drive.level === "ok" ? "" : `
+    <div class="note ${drive.level === "error" ? "crit" : "warn"}">
+      <b>${esc(drive.headline)}</b>
+      ${drive.details.map(d => `<div style="margin-top:5px">${esc(d)}</div>`).join("")}
+      ${drive.fix ? `<div style="margin-top:7px"><b>Fix:</b> <span class="mono">${esc(drive.fix)}</span></div>` : ""}
+      <div style="margin-top:7px;font-size:12px;color:var(--ink-2)">
+        Edit <code class="k">config.toml</code> and restart the app.
+        Use single quotes around a Windows path: <code class="k">root = 'G:\\Shared drives\\...'</code>
+      </div>
+    </div>`;
+}
 
 /* ───── chrome ───── */
 $("#themeBtn").onclick = function(){
@@ -406,10 +436,10 @@ function renderConflicts(){
         the other says not. Whichever system the helpdesk opened decided what this client was told.</div>` : ""}
       <div class="opts">
         <div class="opt ${c.Decision===c["Tracker says"]?"sel":""}" data-v="${esc(c["Tracker says"])}">
-          <div class="src">Research tracker</div>${badge(c["Tracker says"])}
+          <div class="src">${esc(c["Source A"] || "Research tracker")}</div>${badge(c["Tracker says"])}
           <p>${esc(String(c["Tracker note"]||"").slice(0,300))||"no note"}</p></div>
         <div class="opt ${c.Decision===c["Zite says"]?"sel":""}" data-v="${esc(c["Zite says"])}">
-          <div class="src">Zite dashboard ${c["Zite original value"]?`<span class="mono">(${esc(c["Zite original value"])})</span>`:""}</div>${badge(c["Zite says"])}
+          <div class="src">${esc(c["Source B"] || "Zite dashboard")} ${c["Zite original value"]?`<span class="mono">(says “${esc(c["Zite original value"])}”)</span>`:""}</div>${badge(c["Zite says"])}
           <p>${esc(String(c["Zite note"]||"").slice(0,300))||"no note"}</p></div>
       </div>
       ${c.open ? `<div class="field" style="margin-top:10px">
@@ -893,6 +923,39 @@ $("#cfExportBtn").onclick = async () => {
     toast(`Exported ${d.rows.length} declaration${d.rows.length===1?"":"s"}`);
   }catch(e){ toast(e.message); }
 };
+
+/* ───── folder scan ───── */
+let scanTimer;
+$("#scanBtn").onclick = async () => {
+  const folder = $("#scanPath").value.trim();
+  if(!folder) return toast("Name the folder to scan.");
+  try{
+    await api("/api/intake/scan", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({folder, defaultKind: $("#scanKind").value})});
+    $("#scanBtn").disabled = true;
+    goTab("intake");
+    clearInterval(scanTimer); scanTimer = setInterval(pollScan, 900); pollScan();
+  }catch(e){ $("#scanNote").textContent = e.message; toast(e.message); }
+};
+async function pollScan(){
+  try{
+    const d = await api("/api/intake/scan/status");
+    if(d.idle) return;
+    $("#scanNote").textContent =
+      `${d.done}/${d.total} — ${d.staged} staged, ${d.skippedApplied} already in the conformity register, `+
+      `${d.skippedStaged} already staged, ${d.duplicates} already filed, ${d.ignored} ignored`+
+      `${d.failures.length ? ", " + d.failures.length + " unreadable" : ""}`+
+      `${d.truncated ? " — folder holds more than the per-scan cap; scan a subfolder for the rest" : ""}`;
+    const items = await api("/api/intake");
+    S.intake = items.items;
+    renderIntake(); renderTiles();
+    if(!d.running){
+      clearInterval(scanTimer); $("#scanBtn").disabled = false;
+      toast(`Scan finished — ${d.staged} proposal${d.staged===1?"":"s"} to review`);
+      if(d.failures.length) console.warn("scan failures", d.failures);
+    }
+  }catch(e){ clearInterval(scanTimer); $("#scanBtn").disabled = false; toast(e.message); }
+}
 
 /* ───── boot ───── */
 function renderAll(){
