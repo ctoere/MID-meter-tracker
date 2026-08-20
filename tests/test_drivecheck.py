@@ -108,3 +108,35 @@ def test_the_status_survives_a_round_trip_to_the_ui(drive):
 def test_the_startup_banner_names_the_problem_and_the_fix(drive):
     text = drivecheck.describe(status_for(drive / "nowhere"))
     assert "XX" in text and "does not exist" in text and "Fix:" in text
+
+
+# ── config.toml survives however Windows saved it ──────────────────────────
+
+CONFIG_BODY = "# folder \u2014 the root\n[drive]\nroot = 'G:\\Shared drives\\X'\n"
+
+
+@pytest.mark.parametrize("label,data", [
+    ("plain UTF-8", CONFIG_BODY.encode("utf-8")),
+    ("UTF-8 with a BOM", b"\xef\xbb\xbf" + CONFIG_BODY.encode("utf-8")),
+    ("ANSI / cp1252", CONFIG_BODY.encode("cp1252")),
+])
+def test_config_is_read_however_windows_saved_it(tmp_path, label, data):
+    """Editing config.toml on Windows must not brick the app over a comment.
+
+    PowerShell's Set-Content writes either a BOM (which TOML rejects outright)
+    or ANSI (which turns the em dash in a comment into invalid UTF-8). Neither
+    is the user's doing, and both used to stop the app dead.
+    """
+    from app.config import _read_config
+    path = tmp_path / "config.toml"
+    path.write_bytes(data)
+    assert _read_config(path)["drive"]["root"] == "G:\\Shared drives\\X", label
+
+
+def test_a_genuinely_broken_config_still_refuses_with_guidance(tmp_path):
+    from app.config import _read_config
+    path = tmp_path / "config.toml"
+    path.write_text('[drive]\nroot = "G:\\Shared drives\\X"\n')   # double quotes: invalid TOML
+    with pytest.raises(SystemExit) as exc:
+        _read_config(path)
+    assert "SINGLE quotes" in str(exc.value)

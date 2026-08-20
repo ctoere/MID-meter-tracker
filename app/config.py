@@ -40,6 +40,44 @@ def _resolve(value: str) -> Path:
     return path if path.is_absolute() else (PROJECT_ROOT / path)
 
 
+def _read_config(path: Path) -> dict:
+    """Parse config.toml, tolerating however Windows saved it.
+
+    This file gets edited by hand on Windows, and the two obvious ways of doing
+    that both produce something tomllib refuses:
+
+      - PowerShell's `Set-Content -Encoding UTF8` writes a byte-order mark, and
+        TOML has no idea what to do with one ("Invalid statement, line 1")
+      - saving as ANSI turns any non-ASCII character in a comment into a byte
+        that is not valid UTF-8 at all
+
+    Neither is the user's fault, and both would otherwise stop the app dead over
+    a comment they never touched. So: drop a BOM if present, and fall back to
+    cp1252 if the bytes are not UTF-8.
+    """
+    if not path.exists():
+        return {}
+
+    data = path.read_bytes()
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("cp1252", errors="replace")
+
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(
+            f"Could not read {path.name}: {exc}\n\n"
+            f"On Windows a path needs SINGLE quotes, because TOML treats \\ as an escape:\n"
+            f"    root = 'G:\\Shared drives\\ZERES Drive\\...'   correct\n"
+            f'    root = "G:\\Shared drives\\ZERES Drive\\..."   fails\n'
+        ) from exc
+
+
 def _load_dotenv() -> None:
     """Minimal .env reader — no secrets are required today, but the hook exists."""
     env_file = PROJECT_ROOT / ".env"
@@ -71,10 +109,7 @@ _cached: Config | None = None
 
 def _build_config() -> Config:
     _load_dotenv()
-    raw: dict = {}
-    if CONFIG_PATH.exists():
-        with CONFIG_PATH.open("rb") as fh:
-            raw = tomllib.load(fh)
+    raw = _read_config(CONFIG_PATH)
 
     storage = raw.get("storage", {})
     drive = raw.get("drive", {})
